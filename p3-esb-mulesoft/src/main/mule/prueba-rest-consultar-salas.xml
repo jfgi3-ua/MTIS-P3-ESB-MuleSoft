@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<flow name="prueba-rest-consultar-salas-flow"
+		doc:id="beae8484-8537-4e5e-bd00-71d624d8e6e1">
+		<http:listener doc:name="Listener"
+			doc:id="32202258-4435-4039-b834-fbc6defc989b"
+			config-ref="HTTP_Listener_9094_ProcesoNUNVTS"
+			path="test_http_request_rest_consultar_salas" />
+		<http:request method="GET"
+			doc:name="Consulta Todas Salas"
+			doc:id="a35fcc47-8a56-47ca-bc24-51f9f4d25539"
+			config-ref="HTTP_Request_REST_Config" path="/salas">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"WSKey" : "REST-DEV-KEY-001"
+}]]]></http:headers>
+		</http:request>
+	</flow>
+	<flow name="prueba-rest-usuario-no-valido-flow"
+		doc:id="34bbf2b7-43a9-4c90-9d31-32ceca709028">
+		<http:listener doc:name="Listener"
+			doc:id="d446caa6-bb14-420e-b484-63e7e3c5b7c2"
+			config-ref="HTTP_Listener_9094_ProcesoNUNVTS"
+			path="test_http_request_rest_usuario-no-valido" />
+
+		<ee:transform doc:name="Construir body JSON nif">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  nif: attributes.queryParams.nif
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<http:request method="POST"
+			doc:name="Notificar Usuario No Válido"
+			doc:id="9e41c032-5ed6-4564-9bff-8afe988d4fe0"
+			config-ref="HTTP_Request_REST_Config"
+			path="/notificaciones/usuario-no-valido">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"WSKey" : "REST-DEV-KEY-001",
+    "Content-Type": "application/json",
+    "Accept": "application/json"
+}]]]></http:headers>
+		</http:request>
+		<logger level="INFO" doc:name="Logger respuesta REST"
+			message="#[write(payload, 'application/json')]" />
+	</flow>
+</mule>

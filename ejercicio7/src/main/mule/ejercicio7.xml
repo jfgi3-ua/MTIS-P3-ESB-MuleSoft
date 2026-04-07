@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:jms="http://www.mulesoft.org/schema/mule/jms"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/jms http://www.mulesoft.org/schema/mule/jms/current/mule-jms.xsd">
+	<jms:config name="JMS_Consume_Config" doc:name="JMS Config"
+		doc:id="c416ef49-3212-4586-b12b-85c5ac601dd4">
+		<jms:active-mq-connection username="admin"
+			password="Jess89" clientId="historiales-consumer">
+			<jms:factory-configuration
+				brokerUrl="tcp://localhost:61616" />
+		</jms:active-mq-connection>
+	</jms:config>
+	<http:listener-config name="HTTP_Listener_config"
+		doc:name="HTTP Listener config"
+		doc:id="3ef7e6ba-3cc2-446a-8717-50430b0c867b">
+		<http:listener-connection host="0.0.0.0"
+			port="8081" />
+	</http:listener-config>
+	<jms:config name="JMS_Publish_Config" doc:name="JMS Config"
+		doc:id="af0d6a21-bc80-42f0-96f5-f3dce7902ab7">
+		<jms:active-mq-connection username="admin"
+			password="Jess89" >
+			<jms:factory-configuration brokerUrl="tcp://localhost:61616" />
+		</jms:active-mq-connection>
+	</jms:config>
+	<flow name="publish-Flow"
+		doc:id="1e2c9b2b-4d6e-454a-a334-1d8b238ccc21">
+		<http:listener doc:name="Listener"
+			doc:id="2c55495e-5f16-479c-8a62-5e7a0351bdd2"
+			config-ref="HTTP_Listener_config" path="publish" />
+		<logger level="INFO" doc:name="Logger"
+			doc:id="b3cdcb8a-c46f-48cb-8ebf-2e1333d74f36"
+			message='#["Mensaje recibido por HTTP: " ++ (payload as String)]' />
+		<jms:publish doc:name="Publish"
+			doc:id="30fc5d23-0988-4611-be6a-f2b45bbd35c2" config-ref="JMS_Publish_Config"
+			destination="historiales" destinationType="TOPIC" persistentDelivery="true">
+		</jms:publish>
+		<logger level="INFO" doc:name="Logger" doc:id="a2b9a80e-9c01-47e0-b20f-d0a96b0f7d13" message="#[&quot;Mensaje publicado correctamente en topic 'historiales': &quot; ++ (payload as String)]"/>
+	</flow>
+	<flow name="consume-Flow"
+		doc:id="0b39b032-99ba-470b-811d-cff98a4602ea">
+		<jms:listener doc:name="On New Message"
+			doc:id="b9e7ec76-ce1d-4734-a220-7f3da43183ae" config-ref="JMS_Consume_Config"
+			destination="historiales" numberOfConsumers="1">
+			<jms:consumer-type>
+				<jms:topic-consumer durable="true" subscriptionName="historialesSub"/>
+			</jms:consumer-type>
+		</jms:listener>
+		<logger level="INFO" doc:name="Logger" doc:id="1881c2d8-b4e7-4d7b-8c20-08a921af1271" message="#[&quot;Mensaje recibido desde topic 'historiales': &quot; ++ (payload as String)]"/>
+	</flow>
+</mule>

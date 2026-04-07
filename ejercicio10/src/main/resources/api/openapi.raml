@@ -1,0 +1,112 @@
+#%RAML 1.0
+types:
+  HolaResponse:
+    type: object
+    example:
+      strict: false
+      value:
+        mensaje: Hola Mundo DTIC
+    properties:
+      mensaje:
+        type: string
+        required: true
+annotationTypes:
+  amf-serverDescription:
+    type: any
+  amf-exclusiveMinimum:
+    type: any
+  amf-binding:
+    type: any
+  amf-pattern:
+    type: any
+  amf-payloads:
+    type: any
+  amf-exclusiveMaximum:
+    type: any
+  amf-consumes:
+    type: any
+  amf-additionalProperties:
+    type: any
+  amf-or:
+    type: any
+  amf-url:
+    type: any
+  amf-externalDocs:
+    type: any
+  amf-flow:
+    type: any
+  amf-oasDeprecated:
+    type: any
+  amf-contact:
+    type: any
+  amf-multipleOf:
+    type: any
+  amf-xor:
+    type: any
+  amf-not:
+    type: any
+  amf-callbacks:
+    type: any
+  amf-produces:
+    type: any
+  amf-format:
+    type: any
+  amf-license:
+    type: any
+  amf-summary:
+    type: any
+  amf-responses:
+    type: any
+  amf-maximum:
+    type: any
+  amf-tags:
+    type: any
+  amf-dependencies:
+    type: any
+  amf-readOnly:
+    type: any
+  amf-tuple:
+    type: any
+  amf-examples:
+    type: any
+  amf-collectionFormat:
+    type: any
+  amf-termsOfService:
+    type: any
+  amf-servers:
+    type: any
+  amf-xone:
+    type: any
+  amf-defaultResponse:
+    type: any
+  amf-baseUriParameters:
+    type: any
+  amf-parameters:
+    type: any
+  amf-minimum:
+    type: any
+  amf-recursive:
+    type: any
+  amf-and:
+    type: any
+  eov-operation-handler:
+    type: any
+title: Hola Mundo DTIC (MTIS)
+baseUri: http://localhost:8080
+description: API mínima para familiarizarse con OpenAPI + generación de servidor.
+version: 1.0.0
+/hola:
+  get:
+    displayName: holaGET
+    description: Endpoint de prueba estilo "Hola Mundo".
+    (amf-summary): Devuelve un saludo
+    queryParameters:
+      texto:
+        required: false
+        type: string
+    responses:
+      "200":
+        description: OK
+        body:
+          application/json: HolaResponse
+    (eov-operation-handler): controllers/DefaultController

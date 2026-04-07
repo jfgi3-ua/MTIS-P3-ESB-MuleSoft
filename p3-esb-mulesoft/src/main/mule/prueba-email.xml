@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:email="http://www.mulesoft.org/schema/mule/email" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/email http://www.mulesoft.org/schema/mule/email/current/mule-email.xsd">
+	<flow name="prueba-emailFlow" doc:id="1d008c05-e8b9-466b-a3b0-0e8109c6ecbb" >
+		<http:listener doc:name="Listener" doc:id="5465ca82-13a7-4ec5-b21f-6182b4f54454" config-ref="HTTP_Listener_9093_ProcesoNENV" path="test_fakesmtp"/>
+		<email:send doc:name="Send" doc:id="5486c793-0c0a-4ae5-8c3a-df07d1c86d52" config-ref="SMTP_fakeSMTP_Config" fromAddress="${smtp.from}" subject="Prueba Mule">
+			<email:to-addresses >
+				<email:to-address value="siela@hotmail.com" />
+			</email:to-addresses>
+			<email:cc-addresses />
+			<email:bcc-addresses />
+			<email:body >
+				<email:content ><![CDATA[SMTP OK]]></email:content>
+			</email:body>
+		</email:send>
+	</flow>
+</mule>

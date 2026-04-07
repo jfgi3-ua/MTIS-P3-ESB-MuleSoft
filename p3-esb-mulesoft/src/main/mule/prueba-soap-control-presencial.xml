@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:wsc="http://www.mulesoft.org/schema/mule/wsc"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/wsc http://www.mulesoft.org/schema/mule/wsc/current/mule-wsc.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<flow name="prueba-soap-control-presencialFlow" doc:id="05bc00e2-ec88-4ba1-83d2-591ba3b58f6c" >
+		<http:listener doc:name="Listener" doc:id="935603d4-0bb5-4098-8029-9df5998e8d6c" config-ref="HTTP_Listener_9094_ProcesoNUNVTS" path="test_consumer_soap_empleados-sala"/>
+		<wsc:consume doc:name="Consume" doc:id="f8bb8c27-9032-436e-917a-436f42886e25" config-ref="WSC_ControlPresenciaSOAP_Config" operation="controlEmpleadosSala" >
+			<wsc:message >
+				<wsc:body ><![CDATA[#[%dw 2.0
+output application/xml
+ns tns http://www.example.org/ControlPresencia/
+---
+{
+  tns#controlEmpleadosSala: {
+    tns#WSKey: "SOAP-DEV-KEY-001",
+    tns#in: (attributes.queryParams.codigoSala default "100") as Number
+  }
+}]]]></wsc:body>
+			</wsc:message>
+		</wsc:consume>
+		<ee:transform doc:name="Transform Message" doc:id="572acec8-9a62-47bc-b422-5c64543e3a32">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+var empleados = payload.body.controlEmpleadosSalaResponse.out.*empleados
+var errorSoap = payload.body.controlEmpleadosSalaResponse.error
+
+---
+{
+  data: empleados map (emp) -> {
+    nif: emp.nif as String,
+    nombreApellidos: emp.nombreApellidos as String,
+    email: emp.email as String
+  },
+  total: sizeOf(empleados),
+  error: if (errorSoap == null or errorSoap == "") null else errorSoap as String
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+</mule>

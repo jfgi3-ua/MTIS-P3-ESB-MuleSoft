@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<flow name="pruebas-conectividad-9091" doc:id="9e09f54a-a132-41f9-8a0d-a1cacb8ea042" >
+		<http:listener doc:name="Listener" doc:id="7ab8cf07-4aef-44d0-9f62-14b6b1500514" config-ref="HTTP_Listener_9091_EmpleadosSOAP" path="test"/>
+		<set-payload value="OK 9091" doc:name="Set Payload" doc:id="9c17dd82-05f4-4515-af8f-a9af7874af1e" />
+	</flow>
+	<flow name="pruebas-conectividad-9092" doc:id="15ecbe55-7538-4486-906f-0e94a54aac72" >
+		<http:listener doc:name="Listener" doc:id="ad6a7c46-7cc8-4633-a346-86978ddb27f2" config-ref="HTTP_Listener_9092_NivelesREST" path="test"/>
+		<set-payload value="OK 9092" doc:name="Set Payload" doc:id="1cb8ed53-67ba-4b08-88b2-02a1c095fde9" />
+	</flow>
+	<flow name="pruebas-conectividad-9093" doc:id="4c00d5b3-041a-423e-abd4-685bc19d7d46" >
+		<http:listener doc:name="Listener" doc:id="f4cf3cfa-c48c-40e7-aed7-a9065a759108" config-ref="HTTP_Listener_9093_ProcesoNENV" path="test"/>
+		<set-payload value="OK 9093" doc:name="Set Payload" doc:id="f530f1a8-05b8-4e66-b617-bfddec763975" />
+	</flow>
+	<flow name="pruebas-conectividad-9094" doc:id="b5ebfe64-791e-4efc-a6f2-65506f275797" >
+		<http:listener doc:name="Listener" doc:id="de3c2d8e-78f3-431b-bde3-06e8acb80a86" config-ref="HTTP_Listener_9094_ProcesoNUNVTS" path="test"/>
+		<set-payload value="OK 9094" doc:name="Set Payload" doc:id="c5f47ed1-af2a-4211-804a-f266f4abd1cc" />
+	</flow>
+</mule>

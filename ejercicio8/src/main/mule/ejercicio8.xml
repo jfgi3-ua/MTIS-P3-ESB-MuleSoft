@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:wsc="http://www.mulesoft.org/schema/mule/wsc"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/wsc http://www.mulesoft.org/schema/mule/wsc/current/mule-wsc.xsd">
+	<http:listener-config name="HTTP_Listener_config"
+		doc:name="HTTP Listener config"
+		doc:id="26d34112-16e3-4a0e-a978-7dae7762bad3">
+		<http:listener-connection host="0.0.0.0"
+			port="81" />
+	</http:listener-config>
+	<wsc:config name="Web_Service_Consumer_Config1" doc:name="Web Service Consumer Config" doc:id="adec4893-0ceb-4cb2-ae6c-9aced38843e7" >
+		<wsc:connection wsdlLocation="C:\MTIS\workspaceEclipse\HolaMundo\HolaMundo.wsdl" service="HolaMundo" port="HolaMundoSOAP" address="http://localhost:8080/HolaMundo/services/HolaMundo" />
+	</wsc:config>
+	<flow name="ejercicio8Flow" doc:id="ce80fd25-cae0-42ab-a362-0989c048e7d2" >
+		<http:listener doc:name="Listener" doc:id="2fbfb778-eed6-4beb-b090-4f1a90632209" config-ref="HTTP_Listener_config" path="holamundosoap"/>
+		<logger level="INFO" doc:name="Logger" doc:id="d81cb258-d859-4671-ad97-d2eead7e824b" message='#["Texto recibido: " ++ (attributes.queryParams.texto default "SIN_TEXTO")]'/>
+		<ee:transform doc:name="Transform Message" doc:id="102fa27e-74b6-453f-96b9-ae5980c04cb2" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+ns ns0 http://www.example.org/HolaMundo/
+---
+{
+	ns0#NewOperation: {
+		in: attributes.queryParams.texto default "Hola desde Mule"
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<wsc:consume doc:name="Consume" doc:id="5e49e8ee-b724-4a28-84e1-3f7783103bf4" config-ref="Web_Service_Consumer_Config1" operation="NewOperation"/>
+		<logger level="INFO" doc:name="Logger" doc:id="0fc3ed75-af45-4a6b-b5a3-0c3c348ed101" message='#["SOAP body devuelto: " ++ write(payload.body, "application/xml")]'/>
+		<ee:transform doc:name="XML to JSON" doc:id="f894d9e3-9249-4b85-b9ad-7c9457df3fb2" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+ns ns1 http://www.example.org/HolaMundo/
+---
+{
+  resultado: payload.body.ns1#NewOperationResponse.out
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+</mule>

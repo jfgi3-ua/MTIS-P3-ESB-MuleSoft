@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<http:listener-config name="HTTP_Listener_config"
+		doc:name="HTTP Listener config"
+		doc:id="f11c15a3-e792-47be-acd1-8d9ddecd6571">
+		<http:listener-connection host="0.0.0.0"
+			port="8081" />
+	</http:listener-config>
+	<flow name="ejercicio4Flow" doc:id="f1040141-03ba-47d2-a9a7-04ce08d0335d" >
+		<http:listener doc:name="Listener" doc:id="6693c124-6411-4e29-9b4a-a34429111a9c" config-ref="HTTP_Listener_config" path="employees"/>
+		<logger level="INFO" doc:name="Payload inicial recibido" doc:id="54fbaaa6-b24b-47e5-bde1-eed1d3c8eb56" message="Payload recibido: #[payload]"/>
+		<set-variable value="#[[]]" doc:name="Lista vacía inicial" doc:id="5b6ff01e-803e-427b-93b6-a6c73b899122" variableName="processedEmployees"/>
+		<foreach doc:name="For Each" doc:id="a1a53afb-bc05-4221-b612-a20276deacdd" collection="#[payload.Employees]">
+			<logger level="INFO" doc:name="Empleado tratado en esta iteración" doc:id="fa1fc55d-380d-4b46-af74-882f875821ac" message='Empleado procesado: #[payload.employeeCode] - #[payload.firstName]'/>
+			<ee:transform doc:name="Transform Message" doc:id="ecbc2b57-4e99-4f22-862e-a3d3fca5806e" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[
+%dw 2.0
+output application/java
+---
+{
+	codigo: payload.employeeCode,
+	nombre_completo: payload.firstName ++ " " ++ payload.lastName
+}
+					]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<set-variable value="#[vars.processedEmployees ++ [payload]]" doc:name="Acumulador del mensaje transformado" doc:id="3be32fb2-aac6-4061-9752-53b63d64f5e0" variableName="processedEmployees"/>
+		</foreach>
+		<ee:transform doc:name="Transform Message" doc:id="b3249871-ffef-4255-8019-13869f3b209f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+vars.processedEmployees]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+</mule>

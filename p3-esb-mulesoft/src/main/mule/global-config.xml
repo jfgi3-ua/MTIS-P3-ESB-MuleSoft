@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:jms="http://www.mulesoft.org/schema/mule/jms" xmlns:wsc="http://www.mulesoft.org/schema/mule/wsc"
+	xmlns:email="http://www.mulesoft.org/schema/mule/email"
+	xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/email http://www.mulesoft.org/schema/mule/email/current/mule-email.xsd
+http://www.mulesoft.org/schema/mule/wsc http://www.mulesoft.org/schema/mule/wsc/current/mule-wsc.xsd
+http://www.mulesoft.org/schema/mule/jms http://www.mulesoft.org/schema/mule/jms/current/mule-jms.xsd">
+	<configuration-properties doc:name="Configuration properties" doc:id="3dee9106-c8c4-4ddd-8e05-b22b6b7f3a68" file="app.properties" />
+	<http:listener-config name="HTTP_Listener_9091_EmpleadosSOAP" doc:name="HTTP Listener config" doc:id="19e745e6-ccbb-4919-bf47-5d2804d4142f" >
+		<http:listener-connection host="${http.host}" port="${http.port.soap.empleados}" />
+	</http:listener-config>
+	<http:listener-config name="HTTP_Listener_9092_NivelesREST" doc:name="HTTP Listener config" doc:id="253e1273-96ef-418a-ba7d-8f2e8bb26251" >
+		<http:listener-connection host="${http.host}" port="${http.port.rest.niveles}" />
+	</http:listener-config>
+	<http:listener-config name="HTTP_Listener_9093_ProcesoNENV" doc:name="HTTP Listener config" doc:id="c29b4403-211e-42a4-bcfa-da7c27323a65" >
+		<http:listener-connection host="${http.host}" port="${http.port.proceso.nenv}" />
+	</http:listener-config>
+	<http:listener-config name="HTTP_Listener_9094_ProcesoNUNVTS" doc:name="HTTP Listener config" doc:id="812bff0c-1bb8-4912-9370-e5e46704a505" >
+		<http:listener-connection host="${http.host}" port="${http.port.proceso.nunvts}" />
+	</http:listener-config>
+	<db:config name="DB_MySQL_MTIS_Config" doc:name="Database Config" doc:id="8a0d2d0e-f01e-4b9c-b243-46d2254709c7" >
+		<db:my-sql-connection host="${db.host}" port="${db.port}" user="${db.user}" password="${db.password}" database="${db.name}" />
+	</db:config>
+	<email:smtp-config name="SMTP_fakeSMTP_Config" doc:name="Email SMTP" doc:id="9ecabce9-6893-450a-a2c7-73a4c0352ffb" >
+		<email:smtp-connection host="${smtp.host}" port="${smtp.port}"/>
+	</email:smtp-config>
+	<wsc:config name="WSC_EmpleadosSOAP_Config" doc:name="Web Service Consumer Config" doc:id="dc070bb0-6b2b-4175-9d4b-60787a9c1b99" >
+		<wsc:connection wsdlLocation="C:\MTIS\workspaceEclipse\P1-Interoperabilidad\WSDL\Empleados.wsdl" service="Empleados" port="EmpleadosSOAP" address="http://localhost:8080/P1-Interoperabilidad/services/Empleados"/>
+	</wsc:config>
+	<wsc:config name="WSC_ControlPresenciaSOAP_Config" doc:name="Web Service Consumer Config" doc:id="f8baebd8-bb8b-4287-8423-58ce9c0841c6" >
+		<wsc:connection wsdlLocation="C:\MTIS\workspaceEclipse\P1-Interoperabilidad\WSDL\ControlPresencia.wsdl" service="ControlPresencia" port="ControlPresenciaSOAP" address="http://localhost:8080/P1-Interoperabilidad/services/ControlPresencia" />
+	</wsc:config>
+	<http:request-config name="HTTP_Request_REST_Config" doc:name="HTTP Request configuration" doc:id="51649333-71c7-4223-8036-e43bdbf1ca09" basePath="${rest.p1.basepath}">
+		<http:request-connection protocol="${rest.p1.protocol}" host="${rest.p1.host}" port="${rest.p1.port}" />
+	</http:request-config>
+	<jms:config name="JMS_ActiveMQ_Config" doc:name="JMS Config" doc:id="a756fa36-8484-4643-a56f-b40bdc502fee" >
+		<jms:active-mq-connection username="${jms.user}" password="${jms.password}">
+			<jms:factory-configuration brokerUrl="${jms.broker.url}"/>
+		</jms:active-mq-connection>
+	</jms:config>
+</mule>

@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:wsc="http://www.mulesoft.org/schema/mule/wsc"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+      http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+      http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+      http://www.mulesoft.org/schema/mule/wsc http://www.mulesoft.org/schema/mule/wsc/current/mule-wsc.xsd
+      http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+    <flow name="prueba-soap-consultar-todos-empleadosFlow"
+          doc:id="a2ac1186-a735-4410-a3d4-ddd606a32f31">
+
+        <http:listener doc:name="Listener"
+                       doc:id="7502248c-9065-401e-a279-b6ed57cb765d"
+                       config-ref="HTTP_Listener_9093_ProcesoNENV"
+                       path="test_consumer_soap_empleados"/>
+        
+        <wsc:consume doc:name="Consultar Todos Empleados SOAP" doc:id="35452949-8758-4d13-bd80-301d93e3e10b" config-ref="WSC_EmpleadosSOAP_Config" operation="consultarTodosEmpleados">
+
+            <wsc:message>
+                <wsc:body><![CDATA[#[output application/xml
+ns tns http://www.example.org/Empleados/
+---
+{
+  tns#consultarTodosEmpleados: {
+    WSKey: "SOAP-DEV-KEY-001"
+  }
+}]]]></wsc:body>
+            </wsc:message>
+        </wsc:consume>
+		<ee:transform doc:name="Transform Message" doc:id="cd9c5a16-2a1c-4489-8f13-9bb2e5328274">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+// La variable "empleados" es una colección de todos los elementos repetidos en la etiqueta del mismo nombre
+var empleados = payload.body.consultarTodosEmpleadosResponse.out.*empleados
+var errorSoap = payload.body.consultarTodosEmpleadosResponse.error
+---
+{
+	data: empleados map (emp) -> {
+	    nifnie: emp.nifnie as String,
+	    nombreApellidos: emp.nombreApellidos as String,
+	    email: emp.email as String,
+	    naf: emp.naf as String,
+	    iban: emp.iban as String,
+	    idNivel: emp.idNivel as Number,
+	    usuario: emp.usuario as String,
+	    password: emp.password as String,
+	    valido: (emp.valido as String) == "true"
+	},
+	error: if (errorSoap == null or errorSoap == "") null else errorSoap as String
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+    
+</flow>
+
+</mule>

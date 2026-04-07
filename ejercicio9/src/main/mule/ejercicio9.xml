@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<http:listener-config name="HTTP_Listener_config"
+		doc:name="HTTP Listener config"
+		doc:id="236ac3d8-b412-4b7e-aa5b-40d371e425b7">
+		<http:listener-connection host="0.0.0.0"
+			port="8081" />
+	</http:listener-config>
+	<http:request-config name="HTTP_Request_configuration" doc:name="HTTP Request configuration" doc:id="b7f7b72b-afe2-4833-8b13-12c5f141f84d" >
+		<http:request-connection host="localhost" port="8080" />
+	</http:request-config>
+	<flow name="apireqFlow" doc:id="5a166bff-e561-40ec-8097-8efd66a9ff4e" >
+		<http:listener doc:name="Listener" doc:id="54d7d583-9fe3-470b-b15a-3d59ec40a3e8" config-ref="HTTP_Listener_config" path="holamundorest"/>
+		<logger level="INFO" doc:name="Logger" doc:id="c2d0aa5a-0c9a-4c5c-8a86-cfbbd78e7ff0" message='#["Texto recibido: " ++ (attributes.queryParams.texto default "SIN_TEXTO")]'/>
+		<http:request method="GET" doc:name="Request" doc:id="68aab7a6-e828-4cf0-8fa2-fb4ccdc14e8b" config-ref="HTTP_Request_configuration" path="/hola">
+			<http:query-params ><![CDATA[#[output application/java
+---
+{
+	texto: attributes.queryParams.texto default "Mundo DTIC"
+}]]]></http:query-params>
+		</http:request>
+		<logger level="INFO" doc:name="Logger" doc:id="154ba933-dd49-4643-af60-a59b5983e5d4" message='#[%dw 2.0&#10;output text/plain &#10;---&#10;"Status REST: " ++ (attributes.statusCode as String) ++&#10;" | Respuesta REST: " ++ write(payload, "application/json")]'/>
+		<ee:transform doc:name="Transform Message" doc:id="8b70211b-a3a4-4d65-a1a9-23024282b6c1" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	resultado: payload.mensaje,
+	status: attributes.statusCode,
+	reason: attributes.reasonPhrase
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+</mule>

@@ -1,0 +1,4 @@
+%dw 2.0
+
+type auto_cd6cfeec_7a7d_4c05_8462_3fce432e1956_Output_Variables_reply_in_default_languageSub_Flow = Any
+

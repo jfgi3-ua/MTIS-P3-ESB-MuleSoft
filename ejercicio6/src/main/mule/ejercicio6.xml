@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<http:listener-config name="HTTP_Listener_config"
+		doc:name="HTTP Listener config"
+		doc:id="9857c25a-1a31-4f92-9e14-fe9768079dd7">
+		<http:listener-connection host="0.0.0.0"
+			port="8081" />
+	</http:listener-config>
+	<flow name="ejercicio6Flow"
+		doc:id="bbc056ee-e818-4014-a6ff-cc5a60df4008">
+		<http:listener doc:name="Listener"
+			doc:id="1bcf5c9f-9d1d-491c-bea5-eae84b696018"
+			config-ref="HTTP_Listener_config" path="/" />
+		<set-variable value="#[attributes.queryParams.language]"
+			doc:name="Set Variable" doc:id="aa8431be-4632-4521-a244-aed4354bd5e3"
+			variableName="language" />
+		<choice doc:name="Choice"
+			doc:id="7d7b63c6-9b9d-40cf-a589-47f84d4868fa">
+			<when expression='#[vars.language == "Spanish"]'>
+				<set-payload value="Hola Jessie!"
+					doc:name="Reply in EJPAÑÓH"
+					doc:id="40089215-ad48-4a50-8bf0-da7c49665641" />
+			</when>
+			<when expression='#[vars.language == "French"]'>
+				<set-payload
+					value="Bonjour Jessie! Oh la la! Le baguette!"
+					doc:name="Reply in Vive La France"
+					doc:id="32c2b79d-1285-48dd-9afa-7399d71f5667" />
+			</when>
+			<otherwise>
+				<flow-ref doc:name="reply-in-default-languageSub_Flow"
+					doc:id="7ac0dbdd-696a-40f5-ba8a-ab28b4283f9d"
+					name="reply-in-default-languageSub_Flow" />
+			</otherwise>
+		</choice>
+		<logger level="INFO" doc:name="Log the reply"
+			doc:id="d9f99fa0-94c8-4aec-a362-e8ba049039cf"
+			message='#["The reply " ++ payload ++ " means hello in " ++ vars.language]' />
+	</flow>
+	<sub-flow name="reply-in-default-languageSub_Flow"
+		doc:id="cd6cfeec-7a7d-4c05-8462-3fce432e1956">
+		<logger level="INFO" doc:name="Logger"
+			doc:id="9ecee403-24ef-4672-a43e-6c817f4838d1"
+			message="No language specified. Using english as a default." />
+		<set-variable value="English"
+			doc:name="Set Language to English"
+			doc:id="a28b2d8c-80c2-420d-bb23-ca6f7c853d62" variableName="language" />
+		<set-payload value="Hello Jessie!"
+			doc:name="Reply in God Saves the Queen"
+			doc:id="eb3d39b3-bc72-47b0-87a0-4cf936eeb295" />
+	</sub-flow>
+</mule>
