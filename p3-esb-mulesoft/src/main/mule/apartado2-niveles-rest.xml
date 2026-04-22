@@ -1,5 +1,390 @@
 <?xml version="1.0" encoding="UTF-8"?>
-
-<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+<mule xmlns:file="http://www.mulesoft.org/schema/mule/file"
+	xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd"></mule>
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd 
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd">
+	<apikit:config name="apartado2-niveles-rest-config"
+		api="apartado2-niveles-rest.raml"
+		outboundHeadersMapName="outboundHeaders"
+		httpStatusVarName="httpStatus" />
+	<flow name="apartado2-niveles-rest-main">
+		<http:listener
+			config-ref="HTTP_Listener_9092_NivelesREST" path="/*">
+			<http:response
+				statusCode="#[vars.httpStatus default 200]">
+				<http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+			</http:response>
+			<http:error-response
+				statusCode="#[vars.httpStatus default 500]">
+				<http:body><![CDATA[#[payload]]]></http:body>
+				<http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+			</http:error-response>
+		</http:listener>
+		<set-variable value="apartado2-niveles-rest"
+			doc:name="Set nombreFlujo"
+			doc:id="4b65d2b1-e329-4d48-8c45-24faed0cbc37"
+			variableName="nombreFlujo" />
+		<set-variable value='#[%dw 2.0&#10;output application/java&#10;var method = upper(attributes.method default "UNKNOWN")&#10;var path = (attributes.requestPath default attributes.relativePath default "/desconocido") as String&#10;---&#10;if (method == "GET" and startsWith(path, "/niveles/")) "consultarNivel"&#10;else if (method == "POST" and path == "/niveles") "crearNivel"&#10;else if (method == "PUT" and startsWith(path, "/niveles/")) "modificarNivel"&#10;else if (method == "DELETE" and startsWith(path, "/niveles/")) "borrarNivel"&#10;else method ++ " " ++ path]' doc:name="Set operacion" doc:id="b8e97d3b-93c8-4832-9b26-e46f169d1520" variableName="operacion" />
+		<set-variable value="#[attributes.headers.'WSKey' default attributes.headers.'wskey' default '']" doc:name="Set WSKey" doc:id="5a97f1d3-cec1-42e2-b692-296724e2e1c8" variableName="wskey"/>
+		<flow-ref doc:name="Validar WSKey" doc:id="0d4e255a-1eae-4c7a-9d05-4e9bd1be58a4" name="subflow-validar-wskey-rest"/>
+		<apikit:router
+			config-ref="apartado2-niveles-rest-config" />
+		<error-handler>
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue WSKey" doc:id="67d86573-9816-48ff-a4b5-5dce20b46478" type="APP:WSKEY_INVALIDA">
+				<set-variable value='#[{&#10;  mensaje: "WSKey inválida o no proporcionada",&#10;  detalle: "La WSKey recibida no existe en la tabla restkey",&#10;  codigo: "APP:WSKEY_INVALIDA",&#10;  httpStatus: 401,&#10;  respuestaUsuario: "WSKey inválida o no proporcionada."&#10;}]' doc:name="Set errorInfo" doc:id="59d1f9a7-005c-4786-8ec6-5bb9c38f3124" variableName="errorInfo" />
+				<flow-ref doc:name="Manejo de errores" doc:id="93765b4e-9225-4be0-9c38-3379bd573265" name="subflow-manejar-error-rest" />
+			</on-error-continue>
+			<on-error-propagate type="APIKIT:BAD_REQUEST">
+				<set-variable value='#[{&#10;	mensaje: "Petición REST inválida",&#10;	detalle: (error.description default "Error de validación de APIkit") as String,&#10;	codigo: "APIKIT:BAD_REQUEST",&#10;	respuestaUsuario: "Datos inválidos.",&#10;	httpStatus: 400&#10;}]' doc:name="Set errorInfo" doc:id="c8714d44-0774-4f24-bde9-cef6001dabb7" variableName="errorInfo"/>
+				<flow-ref doc:name="Flow Reference" doc:id="fe1b197f-c7fb-4772-9299-0f0da7168cd4" name="subflow-manejar-error-rest"/>
+			</on-error-propagate>
+			<on-error-propagate type="APIKIT:NOT_FOUND">
+				<ee:transform doc:name="Transform Message">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{error: "No existe el recurso solicitado."}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</on-error-propagate>
+			<on-error-propagate
+				type="APIKIT:METHOD_NOT_ALLOWED">
+				<ee:transform doc:name="Transform Message">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{error: "Método no permitido."}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[405]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</on-error-propagate>
+			<on-error-propagate type="APIKIT:NOT_ACCEPTABLE">
+				<ee:transform doc:name="Transform Message">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{error: "Not acceptable."}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[406]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</on-error-propagate>
+			<on-error-propagate
+				type="APIKIT:UNSUPPORTED_MEDIA_TYPE">
+				<ee:transform doc:name="Transform Message">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{error: "Unsupported media type."}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[415]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</on-error-propagate>
+			<on-error-propagate type="APIKIT:NOT_IMPLEMENTED">
+				<ee:transform doc:name="Transform Message">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{error: "Not Implemented."}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[501]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</on-error-propagate>
+		</error-handler>
+	</flow>
+	<flow name="apartado2-niveles-rest-console">
+		<http:listener
+			config-ref="HTTP_Listener_9092_NivelesREST" path="/console/*">
+			<http:response
+				statusCode="#[vars.httpStatus default 200]">
+				<http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+			</http:response>
+			<http:error-response
+				statusCode="#[vars.httpStatus default 500]">
+				<http:body><![CDATA[#[payload]]]></http:body>
+				<http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+			</http:error-response>
+		</http:listener>
+		<apikit:console
+			config-ref="apartado2-niveles-rest-config" />
+		<error-handler>
+			<on-error-propagate type="APIKIT:NOT_FOUND">
+				<ee:transform doc:name="Transform Message">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{error: "Resource not found."}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</on-error-propagate>
+		</error-handler>
+	</flow>
+	<flow name="put:\niveles\(nivel):application\json:apartado2-niveles-rest-config" doc:id="4782c947-84e6-4f38-8576-9c8e3c396b24" >
+		<set-variable value="#[(attributes.uriParams.'nivel' default 0) as Number]" doc:name="Set nivel" doc:id="3f308d66-a34d-4e77-b954-0f82bc53ec7a" variableName="nivel"/>
+		<set-variable value="#[payload]" doc:name="Set nivelEntrada" doc:id="cc24545b-1802-4c5e-9df3-b2019f9df8b4" variableName="nivelEntrada"/>
+		<logger level="INFO" doc:name="Logger" doc:id="d2fae5fa-9be5-4923-baa3-3b550b412936" message='#[%dw 2.0&#10;output application/java&#10;---&#10;"[modificarNivel] method=" ++ (attributes.method default "UNKNOWN")&#10; ++ " path=" ++ (attributes.requestPath default attributes.relativePath default "UNKNOWN")&#10; ++ " nivelPath=" ++ ((vars.nivel default "null") as String)&#10; ++ " nivelBody=" ++ ((vars.nivelEntrada.nivel default "null") as String)&#10; ++ " descripcionBody=" ++ ((vars.nivelEntrada.descripcion default "null") as String)&#10; ++ " wskeyPresent=" ++ ((not isEmpty(vars.wskey default "")) as String)]' />
+		<flow-ref doc:name="Comprobar nivel existe" doc:id="65d03857-85f9-4697-b058-86b53ecb267a" name="subflow-comprobar-nivel-no-existe-rest"/>
+		<choice doc:name="¿coinciden path y body?" doc:id="d8fe09b9-e68d-448d-baf3-68aa34bc8e47" >
+			<when expression="#[(vars.nivelEntrada.nivel default -1) as Number != vars.nivel]">
+				<raise-error doc:name="Raise error" doc:id="c6746df7-aff2-4287-bc3e-4ddcce18b654" type="APP:NIVEL_PATH_BODY_NO_COINCIDEN" description='#"nivel en path y body no coinciden"'/>
+			</when>
+		</choice>
+		<set-variable value="#[(now() &gt;&gt; &quot;UTC&quot;) as String {format: &quot;yyyy-MM-dd'T'HH:mm:ss.SSS'Z'&quot;}]" doc:name="Set timestampOperacion" doc:id="0f95ec6e-b3ca-49f9-8df6-0b9ec396850b" variableName="timestampOperacion"/>
+		<db:update doc:name="Update nivel" doc:id="9400880c-65ff-46f4-8cd3-d0f1861d4ca3" config-ref="DB_MySQL_MTIS_Config">
+			<db:sql ><![CDATA[UPDATE niveles
+SET descripcion = :descripcion
+WHERE nivel = :nivel]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+  nivel: vars.nivel,
+  descripcion: (vars.nivelEntrada.descripcion default "") as String
+}]]]></db:input-parameters>
+		</db:update>
+		<ee:transform doc:name="Construir REST response" doc:id="8c3074fc-c99a-4a20-9bbe-0dc7a697cd29" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  data: {
+    resource: "Nivel",
+    operation: "UPDATED",
+    id: vars.nivel,
+    message: "Nivel actualizado correctamente.",
+    timestamp: vars.timestampOperacion
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<set-variable value="#[payload]" doc:name="Guardar REST response" doc:id="a1243265-5754-4b13-bf74-9d799872d235" variableName="restResponse"/>
+		<file:write doc:name="Escribir el XML de éxito" doc:id="a28a3d1e-c495-4bbe-bb26-32769d828829" config-ref="File_Config_Escritorio" path="#['salidas/niveles/modificarNivel-' ++ (vars.nivel as String) ++ '-' ++ (now() as String {format: 'yyyyMMdd-HHmmssSSS'}) ++ '.xml']">
+			<file:content ><![CDATA[#[%dw 2.0
+output application/xml
+---
+OperationResultEnvelope: {
+  data: {
+    resource: "Nivel",
+    operation: "UPDATED",
+    id: vars.nivel,
+    message: "Nivel actualizado correctamente.",
+    timestamp: vars.timestampOperacion
+  }
+}]]]></file:content>
+		</file:write>
+		<set-payload value="#[vars.restResponse]" doc:name="Restaurar REST response" doc:id="f98e8e78-384a-4e04-93c6-292e5cbc4ecc" />
+		<error-handler >
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="cae3c0bd-9224-4b2f-8e32-42a5470d141f" type="APP:NIVEL_NO_ENCONTRADO">
+				<set-variable value='#[{&#10;  mensaje: "Nivel no encontrado",&#10;  detalle: "No existe ningún nivel con valor " ++ (vars.nivel as String),&#10;  codigo: "APP:NIVEL_NO_ENCONTRADO",&#10;  httpStatus: 404,&#10;  respuestaUsuario: "No existe el recurso solicitado."&#10;}]' doc:name="Set errorInfo" doc:id="54ed39af-55c1-42f2-a296-37b3301f8e05" variableName="errorInfo"/>
+				<flow-ref doc:name="Manejo de errores" doc:id="4abac3a7-29d9-43dd-8ed8-c093d1bbcb6a" name="subflow-manejar-error-rest"/>
+			</on-error-continue>
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="d3e51f3f-4e03-41f7-a2d8-d5a26258a739" type="APP:NIVEL_PATH_BODY_NO_COINCIDEN">
+				<set-variable value='#[{&#10;  mensaje: "Inconsistencia entre path y body",&#10;  detalle: "nivel en path y body no coinciden",&#10;  codigo: "APP:NIVEL_PATH_BODY_NO_COINCIDEN",&#10;  httpStatus: 422,&#10;  respuestaUsuario: "nivel en path y body no coinciden"&#10;}]' doc:name="Set errorInfo" doc:id="112403f7-d8a2-493c-a8ad-4692d94b756e" variableName="errorInfo"/>
+				<flow-ref doc:name="Manejo de errores" doc:id="233a7559-4f08-46e8-b7a6-caf1e10bfae2" name="subflow-manejar-error-rest"/>
+			</on-error-continue>
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="06381c62-1820-4102-a3d2-bdceb435ae00" type="ANY">
+				<set-variable value='#[{&#10;  mensaje: "El proceso se ha tenido que cancelar por errores durante la ejecución",&#10;  detalle: (error.description default ((error.errorType.namespace default "APP") ++ ":" ++ (error.errorType.identifier default "UNKNOWN"))) as String,&#10;  codigo: ((error.errorType.namespace default "APP") ++ ":" ++ (error.errorType.identifier default "UNKNOWN")),&#10;  httpStatus: 500,&#10;  respuestaUsuario: "El proceso se ha tenido que cancelar por errores durante la ejecución"&#10;}]' doc:name="Set errorInfo" doc:id="be180473-67a4-44eb-9dae-1717584ecefc" variableName="errorInfo"/>
+				<flow-ref doc:name="Manejo de errores" doc:id="6ce23d8b-86af-4648-a1c9-7c0fca855031" name="subflow-manejar-error-rest"/>
+			</on-error-continue>
+		</error-handler>
+	</flow>
+	<flow name="delete:\niveles\(nivel):apartado2-niveles-rest-config">
+		<set-variable value="#[(attributes.uriParams.'nivel' default 0) as Number]" doc:name="Set nivel" doc:id="62258360-1223-44ee-ae8a-56362d6d1ee6" variableName="nivel"/>
+		<logger level="INFO" doc:name="Logger" doc:id="b2be84c3-4246-4c20-bcfe-8204c876824b" message='#[%dw 2.0&#10;output application/java&#10;---&#10;"[borrarNivel] method=" ++ (attributes.method default "UNKNOWN")&#10; ++ " path=" ++ (attributes.requestPath default attributes.relativePath default "UNKNOWN")&#10; ++ " nivel=" ++ ((vars.nivel default "null") as String)&#10; ++ " wskeyPresent=" ++ ((not isEmpty(vars.wskey default "")) as String)]'/>
+		<flow-ref doc:name="Comprobar nivel existe" doc:id="28c69f10-006d-48d8-ac6a-24780b16c90a" name="subflow-comprobar-nivel-no-existe-rest"/>
+		<set-variable value="#[(now() &gt;&gt; &quot;UTC&quot;) as String {format: &quot;yyyy-MM-dd'T'HH:mm:ss.SSS'Z'&quot;}]" doc:name="Set Variable" doc:id="e6f6b34e-d62e-46e7-95eb-9a2bc6923384" variableName="timestampOperacion" doc:description="Asi el JSON y el XML usarán exactamente la misma marca de tiempo"/>
+		<db:delete doc:name="Borrar nivel" doc:id="01235c8b-b2a8-4617-8827-c534e0c0cb26" config-ref="DB_MySQL_MTIS_Config">
+			<db:sql ><![CDATA[DELETE FROM niveles
+WHERE nivel = :nivel]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+  nivel: vars.nivel
+}]]]></db:input-parameters>
+		</db:delete>
+		<ee:transform doc:name="Construir REST response" doc:id="aa71eca9-6850-4bbc-89c6-b5ed93db1747" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  data: {
+    resource: "Nivel",
+    operation: "DELETED",
+    id: vars.nivel,
+    message: "Nivel borrado correctamente.",
+    timestamp: vars.timestampOperacion
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<set-variable value="#[payload]" doc:name="Guardar REST response" doc:id="990cb3e3-1d32-4130-8a5d-03a756c75b5f" variableName="restResponse"/>
+		<file:write doc:name="Escribir el XML de éxito" doc:id="4efa8605-9f37-480e-9b48-040e6ac583b1" config-ref="File_Config_Escritorio" path="#['salidas/niveles/borrarNivel-' ++ (vars.nivel as String) ++ '-' ++ (now() as String {format: 'yyyyMMdd-HHmmssSSS'}) ++ '.xml']">
+			<file:content ><![CDATA[#[%dw 2.0
+output application/xml
+---
+OperationResultEnvelope: {
+  data: {
+    resource: "Nivel",
+    operation: "DELETED",
+    id: vars.nivel,
+    message: "Nivel borrado correctamente.",
+    timestamp: vars.timestampOperacion
+  }
+}]]]></file:content>
+		</file:write>
+		<set-payload value="#[vars.restResponse]" doc:name="Restaurar REST response" doc:id="df88339c-5d3c-4816-83a7-8fb869d9f28b" />
+		<error-handler >
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="285d86b3-3b97-4085-9f6a-c3aec38d72fc" type="APP:NIVEL_NO_ENCONTRADO">
+				<set-variable value='#[{&#10;  mensaje: "Nivel no encontrado",&#10;  detalle: "No existe ningún nivel con valor " ++ (vars.nivel as String),&#10;  codigo: "APP:NIVEL_NO_ENCONTRADO",&#10;  httpStatus: 404,&#10;  respuestaUsuario: "No existe el recurso solicitado."&#10;}]' doc:name="Set errorInfo" doc:id="be7b32e6-820e-4933-a252-5bbbabeed94a" variableName="errorInfo"/>
+				<flow-ref doc:name="Manejo de errores" doc:id="a4430da3-ce7a-4e1e-bd75-925f68dccb74" name="subflow-manejar-error-rest"/>
+			</on-error-continue>
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="41676e78-2710-4022-814d-882239717627" type="ANY">
+				<set-variable value='#[{&#10;  mensaje: "El proceso se ha tenido que cancelar por errores durante la ejecución",&#10;  detalle: (error.description default ((error.errorType.namespace default "APP") ++ ":" ++ (error.errorType.identifier default "UNKNOWN"))) as String,&#10;  codigo: ((error.errorType.namespace default "APP") ++ ":" ++ (error.errorType.identifier default "UNKNOWN")),&#10;  httpStatus: 500,&#10;  respuestaUsuario: "El proceso se ha tenido que cancelar por errores durante la ejecución"&#10;}]' doc:name="Set errorInfo" doc:id="7a0766ee-1b87-4a19-a10e-a351d89f96e2" variableName="errorInfo"/>
+				<flow-ref doc:name="Flow Reference" doc:id="d54f12c4-4efd-4244-af11-05ea3d302267" name="subflow-manejar-error-rest"/>
+			</on-error-continue>
+		</error-handler>
+	</flow>
+	<flow name="get:\niveles\(nivel):apartado2-niveles-rest-config">
+		<set-variable value="#[(attributes.uriParams.'nivel' default 0) as Number]" doc:name="Set nivel" doc:id="7aecc81e-501b-49c3-9df1-4e96611de1f2" variableName="nivel"/>
+		<logger level="INFO" doc:name="Body recibido" doc:id="850de25b-d4e6-4d4f-84cd-775dda91cdaa" message='#["[consultarNivel] method=" ++ (attributes.method default "UNKNOWN")&#10; ++ " path=" ++ (attributes.requestPath default attributes.relativePath default "UNKNOWN")&#10; ++ " nivel=" ++ ((vars.nivel default "null") as String)&#10; ++ " wskeyPresent=" ++ ((not isEmpty(vars.wskey default "")) as String)&#10; ++ " payloadType=" ++ ((payload.^mediaType default "unknown") as String)]' />
+		<db:select doc:name="Obtener nivel" doc:id="18e36b01-faa1-4892-aa17-ec10ec83ef7f" config-ref="DB_MySQL_MTIS_Config" target="nivelRows">
+			<db:sql ><![CDATA[SELECT nivel, descripcion
+FROM niveles
+WHERE nivel = :nivel]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+  nivel: vars.nivel
+}]]]></db:input-parameters>
+		</db:select>
+		<choice doc:name="¿Nivel existe?" doc:id="7484dcda-48d0-42a8-b91b-e030bd7a4a6e" >
+			<when expression="#[isEmpty(vars.nivelRows)]">
+				<raise-error doc:name="Nivel no existe" doc:id="8397a221-001d-46cd-963b-2111518e58de" type="APP:NIVEL_NO_ENCONTRADO" description='#["No existe ningún nivel con valor " ++ (vars.nivel as String)]'/>
+			</when>
+		</choice>
+		<ee:transform doc:name="Construir REST response"
+			doc:id="d1ff9630-d8ad-4869-bbad-7c4efd6d5b14">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var n = vars.nivelRows[0]
+---
+{
+  data: {
+    nivel: (n.nivel default 0) as Number,
+    descripcion: (n.descripcion default "") as String
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<set-variable value="#[payload]"
+			doc:name="Guardar REST response"
+			doc:id="acd670ab-c07b-4f2a-b337-a4f17fe50dcf"
+			variableName="restResponse" />
+		<file:write doc:name="Escribir el XML de éxito"
+			doc:id="f46bc546-839a-4a3f-8e5f-370ba719b473"
+			config-ref="File_Config_Escritorio"
+			path="#['salidas/niveles/consultarNivel-' ++ (vars.nivel as String) ++ '-' ++ (now() as String {format: 'yyyyMMdd-HHmmssSSS'}) ++ '.xml']">
+			<file:content><![CDATA[#[%dw 2.0
+output application/xml
+var n = vars.nivelRows[0]
+---
+NivelEnvelope: {
+  data: {
+    nivel: (n.nivel default 0) as Number,
+    descripcion: (n.descripcion default "") as String
+  }
+}]]]></file:content>
+		</file:write>
+		<set-payload value="#[vars.restResponse]"
+			doc:name="Restaurar REST response"
+			doc:id="db3a797d-4540-4ea7-8c5e-3ecd17c9c889" />
+		<error-handler>
+			<on-error-continue enableNotifications="true"
+				logException="true" doc:name="On Error Continue Nivel no encontrado"
+				doc:id="84659998-6c2a-4c38-90f8-e112e286d1f7"
+				type="APP:NIVEL_NO_ENCONTRADO" >
+				<set-variable value='#[{&#10;  mensaje: "Nivel no encontrado",&#10;  detalle: "No existe ningún nivel con valor " ++ (vars.nivel as String),&#10;  codigo: "APP:NIVEL_NO_ENCONTRADO",&#10;  httpStatus: 404,&#10;  respuestaUsuario: "No existe el recurso solicitado."&#10;}]' doc:name="Set errorInfo" doc:id="ea6c0163-d9fa-4e46-a886-38bad638fb85" variableName="errorInfo"/>
+				<flow-ref doc:name="Manejo de errores" doc:id="9a517b76-2881-46ee-bf56-2e4587c07f1e" name="subflow-manejar-error-rest"/>
+			</on-error-continue>
+			<on-error-continue enableNotifications="true"
+				logException="true" doc:name="On Error Continue ANY"
+				doc:id="06bc979a-d848-47bd-a6b8-77b947a84d15" type="ANY" >
+				<set-variable value='#[{&#10;  mensaje: "El proceso se ha tenido que cancelar por errores durante la ejecución",&#10;  detalle: (error.description default ((error.errorType.namespace default "APP") ++ ":" ++ (error.errorType.identifier default "UNKNOWN"))) as String,&#10;  codigo: ((error.errorType.namespace default "APP") ++ ":" ++ (error.errorType.identifier default "UNKNOWN")),&#10;  httpStatus: 500,&#10;  respuestaUsuario: "El proceso se ha tenido que cancelar por errores durante la ejecución"&#10;}]' doc:name="Set errorInfo" doc:id="97a85540-37c5-45fd-8db1-8dcc08e24af7" variableName="errorInfo"/>
+				<flow-ref doc:name="Manejo de errores" doc:id="e7ed5678-a627-4e66-bef0-5d6fa5e466d0" name="subflow-manejar-error-rest"/>
+			</on-error-continue>
+		</error-handler>
+	</flow>
+	<flow
+		name="post:\niveles:application\json:apartado2-niveles-rest-config">
+		<set-variable value="#[payload]" doc:name="Set nivelEntrada" doc:id="4ba90dd1-6a9d-455a-a15a-017c223b061c" variableName="nivelEntrada"/>
+		<logger level="INFO" doc:name="Logger" doc:id="129cc74f-e9eb-4e42-8dbf-70bc92fb57a0" message='#[%dw 2.0&#10;output application/java&#10;---&#10;"[crearNivel] nivel=" ++ ((vars.nivelEntrada.nivel default "null") as String)&#10; ++ " descripcion=" ++ ((vars.nivelEntrada.descripcion default "null") as String)&#10; ++ " wskeyPresent=" ++ ((not isEmpty(vars.wskey default "")) as String)]'/>
+		<flow-ref doc:name="Comprobar nivel existe" doc:id="88db3fbf-8702-493c-bc83-501ace6cebee" name="subflow-comprobar-nivel-existe-rest"/>
+		<db:insert doc:name="Insertar nivel" doc:id="ea920585-4203-4d14-8ec1-ee07cc583919" config-ref="DB_MySQL_MTIS_Config">
+			<db:sql ><![CDATA[INSERT INTO niveles (nivel, descripcion)
+VALUES (:nivel, :descripcion)]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+  nivel: (vars.nivelEntrada.nivel default 0) as Number,
+  descripcion: (vars.nivelEntrada.descripcion default "") as String
+}]]]></db:input-parameters>
+		</db:insert>
+		<ee:transform doc:name="Construir REST response" doc:id="12e9df50-8a4b-4949-8633-df0e3d12709f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	data: {
+		nivel: (vars.nivelEntrada.nivel default 0) as Number,
+		descripcion: (vars.nivelEntrada.descripcion default "") as String
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<set-variable value="201" doc:name="Set httpStatus" doc:id="10007db6-668d-4c48-8952-365fe2065062" variableName="httpStatus"/>
+		<set-variable value="#[payload]" doc:name="Guardar REST response" doc:id="d1e3ba44-942d-4062-ad91-cbe16089d305" variableName="restResponse"/>
+		<file:write doc:name="Escribir XML de éxito" doc:id="590f3798-d9b0-4dc1-99b3-88bdb5e6a8fb" config-ref="File_Config_Escritorio" path="#['salidas/niveles/crearNivel-' ++ ((vars.nivelEntrada.nivel default &quot;sinNivel&quot;) as String) ++ '-' ++ (now() as String {format: 'yyyyMMdd-HHmmssSSS'}) ++ '.xml']">
+			<file:content ><![CDATA[#[%dw 2.0
+output application/xml
+---
+NivelEnvelope: {
+  data: {
+    nivel: (vars.nivelEntrada.nivel default 0) as Number,
+    descripcion: (vars.nivelEntrada.descripcion default "") as String
+  }
+}]]]></file:content>
+		</file:write>
+		<set-payload value="#[vars.restResponse]" doc:name="Restaurar REST response" doc:id="554031f7-64b2-4c19-b576-504df7286822" />
+		<error-handler >
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue Nivel ya existe" doc:id="626f132b-a4bd-4cc4-89ab-b4075c21d175" type="APP:NIVEL_YA_EXISTE">
+				<set-variable value='#[{&#10;  mensaje: "Nivel ya existente",&#10;  detalle: "Ya existe un nivel con valor " ++ ((vars.nivelEntrada.nivel default 0) as String),&#10;  codigo: "APP:NIVEL_YA_EXISTE",&#10;  httpStatus: 409,&#10;  respuestaUsuario: "Conflicto: el código ya existe."&#10;}]' doc:name="Set errorInfo" doc:id="b872a47c-a54d-4583-863e-f245d0e33ad0" variableName="errorInfo"/>
+				<flow-ref doc:name="Manejo de errores" doc:id="d08c4f7b-be49-40d2-b43b-0c4a4aa1bf7f" name="subflow-manejar-error-rest"/>
+			</on-error-continue>
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue ANY" doc:id="318b2138-8c74-493f-88f2-b0dc9112a272" type="ANY">
+				<set-variable value='#[{&#10;  mensaje: "El proceso se ha tenido que cancelar por errores durante la ejecución",&#10;  detalle: (error.description default ((error.errorType.namespace default "APP") ++ ":" ++ (error.errorType.identifier default "UNKNOWN"))) as String,&#10;  codigo: ((error.errorType.namespace default "APP") ++ ":" ++ (error.errorType.identifier default "UNKNOWN")),&#10;  httpStatus: 500,&#10;  respuestaUsuario: "El proceso se ha tenido que cancelar por errores durante la ejecución"&#10;}]' doc:name="Set errorInfo" doc:id="cc7815ab-5652-4e27-9dd2-ad2ba9e652df" variableName="errorInfo"/>
+				<flow-ref doc:name="Manejo de errores" doc:id="1145ec7b-567a-4c1c-b931-68973713e9e1" name="subflow-manejar-error-rest"/>
+			</on-error-continue>
+		</error-handler>
+	</flow>
+</mule>

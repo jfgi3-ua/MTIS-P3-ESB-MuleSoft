@@ -1,5 +1,789 @@
-<?xml version="1.0" encoding="UTF-8"?>
-
-<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<mule xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:api-gateway="http://www.mulesoft.org/schema/mule/api-gateway"
+	xmlns:apikit-soap="http://www.mulesoft.org/schema/mule/apikit-soap"
+	xmlns:batch="http://www.mulesoft.org/schema/mule/ee/batch"
+	xmlns:bti="http://www.mulesoft.org/schema/mule/ee/bti"
+	xmlns:cluster="http://www.mulesoft.org/schema/mule/ee/cluster"
+	xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:email="http://www.mulesoft.org/schema/mule/email"
+	xmlns:file="http://www.mulesoft.org/schema/mule/file"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:http-policy="http://www.mulesoft.org/schema/mule/mule-http"
+	xmlns:jms="http://www.mulesoft.org/schema/mule/jms"
+	xmlns:kryo="http://www.mulesoft.org/schema/mule/kryo"
+	xmlns:module="http://www.mulesoft.org/schema/mule/module"
+	xmlns:sockets="http://www.mulesoft.org/schema/mule/sockets"
+	xmlns:tls="http://www.mulesoft.org/schema/mule/tls"
+	xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking"
+	xmlns:wsc="http://www.mulesoft.org/schema/mule/wsc"
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd"></mule>
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/apikit-soap http://www.mulesoft.org/schema/mule/apikit-soap/current/mule-apikit-soap.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd">
+	<apikit-soap:config httpStatusVarName="httpStatus"
+		name="soapkit-config" port="EmpleadosSOAP" service="Empleados"
+		wsdlLocation="Empleados.wsdl" />
+	<flow name="api-main">
+		<http:listener
+			config-ref="HTTP_Listener_9091_EmpleadosSOAP" path="/empleados">
+			<http:response
+				statusCode="#[attributes.additionalTransportData.statusCode default 200]">
+				<http:headers><![CDATA[#[attributes.protocolHeaders default {}]]]></http:headers>
+			</http:response>
+			<http:error-response
+				statusCode="#[attributes.additionalTransportData.statusCode default 500]">
+				<http:body><![CDATA[#[payload]]]></http:body>
+				<http:headers><![CDATA[#[attributes.protocolHeaders default {}]]]></http:headers>
+			</http:error-response>
+		</http:listener>
+		<apikit-soap:router config-ref="soapkit-config">
+			<apikit-soap:attributes><![CDATA[#[%dw 2.0
+              output application/java
+              ---
+              {
+                  headers: attributes.headers,
+                  method: attributes.method,
+                  queryString: attributes.queryString
+            }]]]></apikit-soap:attributes>
+		</apikit-soap:router>
+	</flow>
+	<flow name="nuevoEmpleado:\soapkit-config">
+		<set-variable value="apartado1-empleados-soap"
+			doc:name="Set nombre flujo"
+			doc:id="3bc7a889-af3b-4bfb-ab83-5accf4bb362b"
+			variableName="nombreFlujo" />
+		<set-variable value="nuevoEmpleado"
+			doc:name="Set operacion"
+			doc:id="25d97736-fdab-418d-9045-5f0108009628"
+			variableName="operacion" />
+		<logger level="INFO" doc:name="Body recibido"
+			doc:id="e5695bc4-9892-4780-9447-fa708a3d5c65"
+			message='#["[nuevoEmpleado] Body recibido: " ++ write(payload.body, "application/xml")]' />
+		<set-variable
+			value='#[payload.body.nuevoEmpleado.WSKey default ""]'
+			doc:name="Set WSkey" doc:id="0a6ba539-0f38-47a4-9542-12bcd058275c"
+			variableName="wskey" />
+		<set-variable
+			value="#[%dw 2.0&#10;ns ns0 http://www.example.org/Empleados/&#10;---&#10;payload.body.ns0#nuevoEmpleado.in default {}]"
+			doc:name="Set empleadoEntrada"
+			doc:id="1c94da54-cb69-4898-b016-1fb65526c5d4"
+			variableName="empleadoEntrada" />
+		<flow-ref doc:name="Validar WSKey SOAP"
+			doc:id="bc5ee666-d82a-41cd-b70c-180f43861431"
+			name="subflow-validar-wskey-soap" />
+		<flow-ref doc:name="Comprobar empleado existe"
+			doc:id="808c7ff8-a5a1-492d-b060-4c5fcb642950"
+			name="subflow-consultar-empleado-existente" />
+		<choice doc:name="¿Empleado ya existe?"
+			doc:id="dc07249e-5f4d-4217-a44e-f51f358ea0cc">
+			<when expression="#[!isEmpty(vars.empleadoExistenteRows)]">
+				<raise-error doc:name="Empleado existente encontrado"
+					doc:id="ae93f6da-98ec-4668-92d7-f2b8d3e8abda"
+					type="APP:EMPLEADO_YA_EXISTE"
+					description='#["Ya existe un empleado con nifnie " ++ ((vars.empleadoEntrada.nifnie default "desconocido") as String)]' />
+			</when>
+		</choice>
+		<flow-ref doc:name="Comprobar nivel existe"
+			doc:id="9cc170b6-456e-4a9a-ae3e-c9859f9affec"
+			name="subflow-comprobar-nivel-no-existe-soap" />
+		<db:insert doc:name="Insertar nuevo empleado"
+			doc:id="679f4c1c-4bc5-4229-85fb-b29c69d9fdf3"
+			config-ref="DB_MySQL_MTIS_Config">
+			<db:sql><![CDATA[INSERT INTO empleados
+(nifnie, nombreApellidos, email, naf, iban, idNivel, usuario, password, valido)
+VALUES
+(:nifnie, :nombreApellidos, :email, :naf, :iban, :idNivel, :usuario, :password, :valido)]]></db:sql>
+			<db:input-parameters><![CDATA[#[{
+  nifnie: vars.empleadoEntrada.nifnie default "",
+  nombreApellidos: vars.empleadoEntrada.nombreApellidos default "",
+  email: vars.empleadoEntrada.email default "",
+  naf: vars.empleadoEntrada.naf default "",
+  iban: vars.empleadoEntrada.iban default "",
+  idNivel: (vars.empleadoEntrada.idNivel default 0) as Number,
+  usuario: vars.empleadoEntrada.usuario default "",
+  password: vars.empleadoEntrada.password default "",
+  valido: if (((vars.empleadoEntrada.valido default false) as Boolean)) 1 else 0
+}]]]></db:input-parameters>
+		</db:insert>
+		<logger level="INFO" doc:name="Empleado insertado resultado"
+			doc:id="a15daa12-d097-49fe-9a9e-969f2e3c2db6"
+			message='#["[nuevoEmpleado] Empleado insertado correctamente con nifnie: " ++ ((vars.empleadoEntrada.nifnie default "desconocido") as String)]' />
+		<ee:transform doc:name="Construir respuesta SOAP"
+			doc:id="1f213bd7-7c46-4752-ac85-f20994d00690">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+ns ns0 http://www.example.org/Empleados/
+---
+{
+    body: {
+        ns0#nuevoEmpleadoResponse: {
+            out: "Empleado insertado correctamente",
+            error: ""
+        }
+    } write "application/xml"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<set-variable value="#[payload]"
+			doc:name="Guardar SOAP response"
+			doc:id="e4a68a5c-2a4f-4614-a7ec-7694baa835c2"
+			variableName="soapResponse" />
+		<file:write doc:name="Escribir JSON de éxito"
+			doc:id="f6087125-0487-4b68-bd19-ebbe71706dc4"
+			config-ref="File_Config_Escritorio"
+			path="#['salidas/empleados/nuevoEmpleado-' ++ (vars.empleadoEntrada.nifnie default &quot;sinNif&quot;) ++ '-' ++ (now() as String {format: 'yyyyMMdd-HHmmssSSS'}) ++ '.json']">
+			<file:content><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+  operacion: vars.operacion,
+  correcto: true,
+  fechaHora: now() as String {format: "yyyy-MM-dd HH:mm:ss"},
+  mensaje: "Empleado insertado correctamente",
+  empleado: {
+    nifnie: vars.empleadoEntrada.nifnie,
+    nombreApellidos: vars.empleadoEntrada.nombreApellidos,
+    email: vars.empleadoEntrada.email,
+    naf: vars.empleadoEntrada.naf,
+    iban: vars.empleadoEntrada.iban,
+    idNivel: (vars.empleadoEntrada.idNivel default 0) as Number,
+    usuario: vars.empleadoEntrada.usuario,
+    password: vars.empleadoEntrada.password,
+    valido: (vars.empleadoEntrada.valido default false) as Boolean
+  }
+}]]]></file:content>
+		</file:write>
+		<set-payload value="#[vars.soapResponse]"
+			doc:name="Restaurar SOAP response"
+			doc:id="2d49950a-70bd-4f9b-b140-f5cab215a1c6" />
+		<error-handler>
+			<on-error-continue enableNotifications="true"
+				logException="true" doc:name="On Error Continue"
+				doc:id="bac1f907-8f98-4773-a5a6-625cf1b2ae97"
+				type="APP:WSKEY_INVALIDA">
+				<set-variable
+					value='#[{&#10;  mensaje: "WSKey inválida o no proporcionada",&#10;  detalle: "La WSKey recibida no existe en la tabla soapkey",&#10;  codigo: "APP:WSKEY_INVALIDA"&#10;}]'
+					doc:name="Set errorInfo"
+					doc:id="b069987b-2da0-4438-bcca-c9a3a8ff941e"
+					variableName="errorInfo" />
+				<flow-ref doc:name="Manejo de errores"
+					doc:id="60ec1a33-d5e0-4424-8836-807c8e717957"
+					name="subflow-manejar-error-soap" />
+			</on-error-continue>
+			<on-error-continue enableNotifications="true"
+				logException="true" doc:name="On Error Continue"
+				doc:id="c1070e7f-9241-4d46-a3a6-85f59cc12025"
+				type="APP:EMPLEADO_YA_EXISTE">
+				<set-variable
+					value='#[{&#10;  mensaje: "Empleado ya existente",&#10;  detalle: "Ya existe un empleado con nifnie " ++ ((vars.empleadoEntrada.nifnie default "desconocido") as String),&#10;  codigo: "APP:EMPLEADO_YA_EXISTE"&#10;}]'
+					doc:name="Set errorInfo"
+					doc:id="c51e3ad7-d3d4-424c-8879-a74332aa0c2e"
+					variableName="errorInfo" />
+				<flow-ref doc:name="Manejo de errores"
+					doc:id="711dfabe-7deb-403d-81c7-947913157c35"
+					name="subflow-manejar-error-soap" />
+			</on-error-continue>
+			<on-error-continue enableNotifications="true"
+				logException="true" doc:name="On Error Continue"
+				doc:id="408fbb0a-771e-4fbc-86dc-df0a7f659bc4"
+				type="APP:NIVEL_NO_EXISTE">
+				<set-variable
+					value='#[{&#10;  mensaje: "Nivel no válido o inexistente",&#10;  detalle: "No existe ningún nivel con id " ++ (((vars.empleadoEntrada.idNivel default 0) as Number) as String),&#10;  codigo: "APP:NIVEL_NO_EXISTE"&#10;}]'
+					doc:name="Set errorInfo"
+					doc:id="3e57a263-8948-4a18-91c3-52dba2aec57f"
+					variableName="errorInfo" />
+				<flow-ref doc:name="Manejo de errores"
+					doc:id="175f5917-d895-4f86-ac86-1c5323cadb88"
+					name="subflow-manejar-error-soap" />
+			</on-error-continue>
+			<on-error-continue enableNotifications="true"
+				logException="true" doc:name="On Error Continue"
+				doc:id="449e8a30-0266-4c1e-bd2c-ca1661144177" type="ANY">
+				<set-variable
+					value='#[{&#10;  mensaje: "El proceso se ha tenido que cancelar por errores durante la ejecución",&#10;  detalle: (error.errorType.namespace default "APP") ++ ":" ++ (error.errorType.identifier default "UNKNOWN"),&#10;  codigo: (error.errorType.namespace default "APP") ++ ":" ++ (error.errorType.identifier default "UNKNOWN")&#10;}]'
+					doc:name="Set errorInfo"
+					doc:id="3ee7c4ff-a243-44cb-a9ec-1fb5fdce8897"
+					variableName="errorInfo" />
+				<flow-ref doc:name="Manejo de errores"
+					doc:id="eea938af-a130-40a0-928b-3dab9e639215"
+					name="subflow-manejar-error-soap" />
+			</on-error-continue>
+		</error-handler>
+	</flow>
+	<flow name="borrarEmpleado:\soapkit-config">
+		<set-variable value="apartado1-empleados-soap"
+			doc:name="Set nombre flujo"
+			doc:id="e36240e6-33dd-4c89-a3b1-abf32c3224d1"
+			variableName="nombreFlujo" />
+		<set-variable value="borrarEmpleado"
+			doc:name="Set operacion"
+			doc:id="6ce253cb-1a9d-46d9-90f0-a678bf26e73e"
+			variableName="operacion" />
+		<logger level="INFO" doc:name="Body recibido"
+			doc:id="116cead5-52f7-4f82-9fe7-97dbbfb411c9"
+			message='#["[borrarEmpleado] Body recibido: " ++ write(payload.body, "application/xml")]' />
+		<set-variable
+			value='#[payload.body.borrarEmpleado.WSKey default ""]'
+			doc:name="Set WSKey" doc:id="c55a5996-5a6f-4ae3-8e49-f2b57831db5b"
+			variableName="wskey" />
+		<flow-ref doc:name="Validar WSKey SOAP"
+			doc:id="c224559d-c86e-4031-8361-d9ee898936dd"
+			name="subflow-validar-wskey-soap" />
+		<set-variable
+			value='#[%dw 2.0&#10;ns ns0 http://www.example.org/Empleados/&#10;---&#10;(payload.body.ns0#borrarEmpleado.in default "") as String]'
+			doc:name="Set NIFNIE" doc:id="aa7ec1e0-9d71-4a5c-bd4e-c05df2d5d23c"
+			variableName="nifnie" />
+		<set-variable
+			value='#[{ nifnie: vars.nifnie default "" }]'
+			doc:name="Set empleadoEntrada"
+			doc:id="1c883c04-2618-43f0-94d3-47363b42a6a3"
+			variableName="empleadoEntrada" />
+		<flow-ref doc:name="Comprobar empleado existe"
+			doc:id="abcb7184-29f0-4bc4-9766-faa121d0443e"
+			name="subflow-consultar-empleado-existente" />
+		<choice doc:name="¿Empleado existe?"
+			doc:id="db8cf77d-7810-4123-83c2-0fe57bab4994">
+			<when expression="#[isEmpty(vars.empleadoExistenteRows)]">
+				<raise-error doc:name="Empleado no existe"
+					doc:id="026fc789-5b5f-4407-980d-2e42cba0e231"
+					type="APP:EMPLEADO_NO_ENCONTRADO"
+					description='#["No existe ningún empleado con nifnie " ++ ((vars.empleadoEntrada.nifnie default "desconocido") as String)]' />
+			</when>
+		</choice>
+		<db:delete doc:name="Borrar empleado"
+			doc:id="72af0d9a-d622-44d7-be49-bb861ceab22f"
+			config-ref="DB_MySQL_MTIS_Config">
+			<db:sql><![CDATA[DELETE FROM empleados
+WHERE nifnie = :nifnie]]></db:sql>
+			<db:input-parameters><![CDATA[#[{
+  nifnie: vars.nifnie default ""
+}]]]></db:input-parameters>
+		</db:delete>
+		<logger level="INFO" doc:name="Empleado borrado"
+			doc:id="f840f297-4551-4544-ba8b-21259ec8a060"
+			message='#["[borrarEmpleado] Empleado borrado correctamente con nifnie: " ++ ((vars.nifnie default "desconocido") as String)]' />
+		<ee:transform doc:name="Construir respuesta SOAP"
+			doc:id="0bc31014-683c-4794-9d78-353660b1e197">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+ns ns0 http://www.example.org/Empleados/
+---
+{
+    body: {
+        ns0#borrarEmpleadoResponse: {
+            out: "Empleado borrado correctamente",
+            error: ""
+        }
+    } write "application/xml"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<set-variable value="#[payload]"
+			doc:name="Guardar SOAP response"
+			doc:id="fb56942e-d00d-4e91-91a3-b05a2b21bf2f"
+			variableName="soapResponse" />
+		<file:write doc:name="Escribir JSON de éxito"
+			doc:id="05b874a0-9cd3-4187-96a5-b6f9ff3ad617"
+			config-ref="File_Config_Escritorio"
+			path="#['salidas/empleados/borrarEmpleado-' ++ (vars.nifnie default &quot;sinNif&quot;) ++ '-' ++ (now() as String {format: 'yyyyMMdd-HHmmssSSS'}) ++ '.json']">
+			<file:content><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+  operacion: vars.operacion,
+  correcto: true,
+  fechaHora: now() as String {format: "yyyy-MM-dd HH:mm:ss"},
+  mensaje: "Empleado borrado correctamente",
+  empleadoBorrado: {
+    nifnie: vars.nifnie
+  }
+}]]]></file:content>
+		</file:write>
+		<set-payload value="#[vars.soapResponse]"
+			doc:name="Restaurar SOAP response"
+			doc:id="743b1bf6-f513-4522-8780-a4282f77b2f7" />
+		<error-handler>
+			<on-error-continue enableNotifications="true"
+				logException="true" doc:name="On Error Continue"
+				doc:id="be8ed981-6cb4-4082-b040-548baa7f1c4d"
+				type="APP:WSKEY_INVALIDA">
+				<set-variable
+					value='#[{&#10;  mensaje: "WSKey inválida o no proporcionada",&#10;  detalle: "La WSKey recibida no existe en la tabla soapkey",&#10;  codigo: "APP:WSKEY_INVALIDA"&#10;}]'
+					doc:name="Set errorInfo"
+					doc:id="03a779ea-2618-4980-b3c0-a5258e915b99"
+					variableName="errorInfo" />
+				<flow-ref doc:name="Manejo de errores"
+					doc:id="312ffbb6-4a3c-4432-8679-3aad4e17a4b6"
+					name="subflow-manejar-error-soap" />
+			</on-error-continue>
+			<on-error-continue enableNotifications="true"
+				logException="true" doc:name="On Error Continue"
+				doc:id="3f9b4006-ffe5-430d-a916-a9ced976f626"
+				type="APP:EMPLEADO_NO_ENCONTRADO">
+				<set-variable
+					value='#[{&#10;  mensaje: "Empleado no encontrado",&#10;  detalle: "No existe ningún empleado con nifnie " ++ ((vars.empleadoEntrada.nifnie default "desconocido") as String),&#10;  codigo: "APP:EMPLEADO_NO_ENCONTRADO"&#10;}]'
+					doc:name="Set errorInfo"
+					doc:id="8f1f8d20-3deb-4bb0-8608-ee88c0997f3e"
+					variableName="errorInfo" />
+				<flow-ref doc:name="Manejo de errores"
+					doc:id="2992f3d3-a9c3-465f-9111-416877700b6a"
+					name="subflow-manejar-error-soap" />
+			</on-error-continue>
+			<on-error-continue enableNotifications="true"
+				logException="true" doc:name="On Error Continue"
+				doc:id="b4213499-502c-465b-bf32-4ba071264349" type="ANY">
+				<set-variable
+					value='#[{&#10;  mensaje: "El proceso se ha tenido que cancelar por errores durante la ejecución",&#10;  detalle: (error.errorType.namespace default "APP") ++ ":" ++ (error.errorType.identifier default "UNKNOWN"),&#10;  codigo: (error.errorType.namespace default "APP") ++ ":" ++ (error.errorType.identifier default "UNKNOWN")&#10;}]'
+					doc:name="Set errorInfo"
+					doc:id="f09ca7e1-56fd-4d92-b8f2-795e9cee7c82"
+					variableName="errorInfo" />
+				<flow-ref doc:name="Manejo de errores"
+					doc:id="9fb1f71b-067a-4183-ad45-4e418e890ced"
+					name="subflow-manejar-error-soap" />
+			</on-error-continue>
+		</error-handler>
+	</flow>
+	<flow name="modificarEmpleado:\soapkit-config">
+		<set-variable value="apartado1-empleados-soap"
+			doc:name="Set nombre flujo"
+			doc:id="95a00ac8-3345-404f-bc78-8df15616fde2"
+			variableName="nombreFlujo" />
+		<set-variable value="modificarEmpleado"
+			doc:name="Set operacion"
+			doc:id="873e9594-9c80-4f82-bbdf-d30e6fbbd356"
+			variableName="operacion" />
+		<logger level="INFO" doc:name="Body recibido"
+			doc:id="5c92ee1d-1c9a-4810-b0f1-6d7ffb8c30a8"
+			message='#["[modificarEmpleado] Body recibido: " ++ write(payload.body, "application/xml")]' />
+		<set-variable
+			value='#[payload.body.modificarEmpleado.WSKey default ""]'
+			doc:name="Set WSKey" doc:id="e9f6a4ac-0c86-42f0-8d44-1076b360aefa"
+			variableName="wskey" />
+		<set-variable
+			value='#[%dw 2.0&#10;ns ns0 http://www.example.org/Empleados/&#10;---&#10;payload.body.ns0#modificarEmpleado.in default {}]'
+			doc:name="Set empleadoEntrada"
+			doc:id="b12b6c42-0d84-4167-8bbc-8242e3d7f71e"
+			variableName="empleadoEntrada" />
+		<flow-ref doc:name="Validar WSKey SOAP"
+			doc:id="e594a28e-ac77-42ee-9e43-b9c82f7bd3e4"
+			name="subflow-validar-wskey-soap" />
+		<flow-ref doc:name="Comprobar empleado existe"
+			doc:id="6a144f80-9bab-4c4b-9a36-2e0f634ad2f2"
+			name="subflow-consultar-empleado-existente" />
+		<choice doc:name="¿Empleado existe?"
+			doc:id="389b55f7-9d5f-4fd6-9029-b2ffc297c20d">
+			<when expression="#[isEmpty(vars.empleadoExistenteRows)]">
+				<raise-error doc:name="Empleado no existe"
+					doc:id="d407e1b9-bb7d-4bc2-9b11-65740bedbe94"
+					type="APP:EMPLEADO_NO_ENCONTRADO"
+					description='#["No existe ningún empleado con nifnie " ++ ((vars.empleadoEntrada.nifnie default "desconocido") as String)]' />
+			</when>
+		</choice>
+		<flow-ref doc:name="Comprobar nivel existe"
+			doc:id="dc9f8bb7-d01b-488f-bd44-6ea5f5c4dd85"
+			name="subflow-comprobar-nivel-no-existe-soap" />
+		<db:update doc:name="Modificar empleado"
+			doc:id="c3343e96-c4a9-40a2-b326-d137a6aec31d"
+			config-ref="DB_MySQL_MTIS_Config">
+			<db:sql><![CDATA[UPDATE empleados
+SET nombreApellidos = :nombreApellidos,
+    email = :email,
+    naf = :naf,
+    iban = :iban,
+    idNivel = :idNivel,
+    usuario = :usuario,
+    password = :password,
+    valido = :valido
+WHERE nifnie = :nifnie]]></db:sql>
+			<db:input-parameters><![CDATA[#[{
+  nifnie: vars.empleadoEntrada.nifnie default "",
+  nombreApellidos: vars.empleadoEntrada.nombreApellidos default "",
+  email: vars.empleadoEntrada.email default "",
+  naf: vars.empleadoEntrada.naf default "",
+  iban: vars.empleadoEntrada.iban default "",
+  idNivel: (vars.empleadoEntrada.idNivel default 0) as Number,
+  usuario: vars.empleadoEntrada.usuario default "",
+  password: vars.empleadoEntrada.password default "",
+  valido: if (((vars.empleadoEntrada.valido default false) as Boolean)) 1 else 0
+}]]]></db:input-parameters>
+		</db:update>
+		<logger level="INFO" doc:name="Empleado modificado resultado"
+			doc:id="51acd658-82d2-43c5-b02f-716644a751d3"
+			message='#["[modificarEmpleado] Empleado modificado correctamente con nifnie: " ++ ((vars.empleadoEntrada.nifnie default "desconocido") as String)]' />
+		<ee:transform doc:name="Construir respuesta SOAP"
+			doc:id="0833b9af-035a-4df6-af6d-6cf2c8a414c9">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+ns ns0 http://www.example.org/Empleados/
+---
+{
+    body: {
+        ns0#modificarEmpleadoResponse: {
+            out: "Empleado modificado correctamente",
+            error: ""
+        }
+    } write "application/xml"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<set-variable value="#[payload]"
+			doc:name="Guardar SOAP response"
+			doc:id="3741f8dc-8da9-4da6-837d-7b7128540f47"
+			variableName="soapResponse" />
+		<file:write doc:name="Write"
+			doc:id="c1910df6-9640-44ef-883d-9da939f64fec"
+			config-ref="File_Config_Escritorio"
+			path="#['salidas/empleados/modificarEmpleado-' ++ (vars.empleadoEntrada.nifnie default &quot;sinNif&quot;) ++ '-' ++ (now() as String {format: 'yyyyMMdd-HHmmssSSS'}) ++ '.json']">
+			<file:content><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+  operacion: vars.operacion,
+  correcto: true,
+  fechaHora: now() as String {format: "yyyy-MM-dd HH:mm:ss"},
+  mensaje: "Empleado modificado correctamente",
+  empleado: {
+    nifnie: vars.empleadoEntrada.nifnie,
+    nombreApellidos: vars.empleadoEntrada.nombreApellidos,
+    email: vars.empleadoEntrada.email,
+    naf: vars.empleadoEntrada.naf,
+    iban: vars.empleadoEntrada.iban,
+    idNivel: (vars.empleadoEntrada.idNivel default 0) as Number,
+    usuario: vars.empleadoEntrada.usuario,
+    password: vars.empleadoEntrada.password,
+    valido: (vars.empleadoEntrada.valido default false) as Boolean
+  }
+}]]]></file:content>
+		</file:write>
+		<set-payload value="#[vars.soapResponse]"
+			doc:name="Restaurar SOAP response"
+			doc:id="bc14ac52-d602-4ea5-9062-1a6974b9a70c" />
+		<error-handler>
+			<on-error-continue enableNotifications="true"
+				logException="true" doc:name="On Error Continue"
+				doc:id="3c3eee8c-6e29-4558-bcc5-22be3b2f94da"
+				type="APP:WSKEY_INVALIDA">
+				<set-variable
+					value='#[{&#10;  mensaje: "WSKey inválida o no proporcionada",&#10;  detalle: "La WSKey recibida no existe en la tabla soapkey",&#10;  codigo: "APP:WSKEY_INVALIDA"&#10;}]'
+					doc:name="Set errorInfo"
+					doc:id="1c0502a0-3de1-417f-9807-f5d55422ac66"
+					variableName="errorInfo" />
+				<flow-ref doc:name="Manejo de errores"
+					doc:id="989e6467-7d15-4239-96be-0f92b1c8306a"
+					name="subflow-manejar-error-soap" />
+			</on-error-continue>
+			<on-error-continue enableNotifications="true"
+				logException="true" doc:name="On Error Continue"
+				doc:id="fab760f9-17af-4de1-b2a8-762ccb37c75d"
+				type="APP:EMPLEADO_NO_ENCONTRADO">
+				<set-variable
+					value='#[{&#10;  mensaje: "Empleado no encontrado",&#10;  detalle: "No existe ningún empleado con nifnie " ++ ((vars.empleadoEntrada.nifnie default "desconocido") as String),&#10;  codigo: "APP:EMPLEADO_NO_ENCONTRADO"&#10;}]'
+					doc:name="Set errorInfo"
+					doc:id="e5bede8e-4fff-42ed-9b63-39a6aa40fd58"
+					variableName="errorInfo" />
+				<flow-ref doc:name="Manejo de errores"
+					doc:id="72556c3f-c720-476d-9776-35901828d2b9"
+					name="subflow-manejar-error-soap" />
+			</on-error-continue>
+			<on-error-continue enableNotifications="true"
+				logException="true" doc:name="On Error Continue"
+				doc:id="fd232bd5-afb0-4c38-80d4-324d063de16a"
+				type="APP:NIVEL_NO_EXISTE">
+				<set-variable
+					value='#[{&#10;  mensaje: "Nivel no válido o inexistente",&#10;  detalle: "No existe ningún nivel con id " ++ (((vars.empleadoEntrada.idNivel default 0) as Number) as String),&#10;  codigo: "APP:NIVEL_NO_EXISTE"&#10;}]'
+					doc:name="Set errorInfo"
+					doc:id="9af7bae2-6b29-4596-bf75-169939149274"
+					variableName="errorInfo" />
+				<flow-ref doc:name="Manejo de errores"
+					doc:id="29ca91ca-5d24-4c3a-a19c-a5c69283131b"
+					name="subflow-manejar-error-soap" />
+			</on-error-continue>
+			<on-error-continue enableNotifications="true"
+				logException="true" doc:name="On Error Continue"
+				doc:id="632dda36-4c5d-4acd-9278-559c3f9a1848" type="ANY">
+				<set-variable
+					value='#[{&#10;  mensaje: "El proceso se ha tenido que cancelar por errores durante la ejecución",&#10;  detalle: (error.errorType.namespace default "APP") ++ ":" ++ (error.errorType.identifier default "UNKNOWN"),&#10;  codigo: (error.errorType.namespace default "APP") ++ ":" ++ (error.errorType.identifier default "UNKNOWN")&#10;}]'
+					doc:name="Set errorInfo"
+					doc:id="e8d2822a-c2c4-4ddf-88ed-95b04cfdf087"
+					variableName="errorInfo" />
+				<flow-ref doc:name="Manejo de errores"
+					doc:id="f6a9182c-fc94-4e08-ab5c-e346dd5955ef"
+					name="subflow-manejar-error-soap" />
+			</on-error-continue>
+		</error-handler>
+	</flow>
+	<flow name="consultarEmpleado:\soapkit-config">
+		<set-variable value="apartado1-empleados-soap"
+			doc:name="Set nombre flujo"
+			doc:id="7153d1ba-760f-4d99-9740-f71cfe1452f7"
+			variableName="nombreFlujo" />
+		<set-variable value="consultarEmpleado"
+			doc:name="Set operacion"
+			doc:id="3294e2f0-0e74-4717-b8a7-4679e0a2c73d"
+			variableName="operacion" />
+		<logger level="INFO" doc:name="Body recibido"
+			doc:id="60687fd9-e5fb-41c6-b319-824b64df1cbb"
+			message='#["[consultarEmpleado] Body recibido: " ++ write(payload.body, "application/xml")]' />
+		<set-variable
+			value='#[payload.body.consultarEmpleado.WSKey default ""]'
+			doc:name="Set WSKey" doc:id="e08fd512-6c97-472f-a787-6d7986ae7a92"
+			variableName="wskey" />
+		<flow-ref doc:name="Validar WSKey SOAP"
+			doc:id="c0a2f3fc-291f-451a-b828-0bf00490d40f"
+			name="subflow-validar-wskey-soap" />
+		<set-variable
+			value='#[payload.body.consultarEmpleado."in" default ""]'
+			doc:name="Set NIFNIE" doc:id="88aee7af-a450-4c46-900f-1f9cfadd1209"
+			variableName="nifnie" />
+		<set-variable
+			value='#[{ nifnie: vars.nifnie default "" }]'
+			doc:name="Set empleadoEntrada"
+			doc:id="1c787215-d3cf-4c69-bbd6-ddcb4595008e"
+			variableName="empleadoEntrada" />
+		<flow-ref doc:name="Comprobar empleado existe"
+			doc:id="857faca4-16f1-411b-9f8e-df46fef8a169"
+			name="subflow-consultar-empleado-existente" />
+		<choice doc:name="¿Empleado existe?"
+			doc:id="d5f48d83-d127-4b13-bcac-844d9d88fa43">
+			<when expression="#[isEmpty(vars.empleadoExistenteRows)]">
+				<raise-error doc:name="Empleado no encontrado"
+					doc:id="5a216517-69d0-4ea3-8054-9ffb227b8fae"
+					type="APP:EMPLEADO_NO_ENCONTRADO"
+					description='#["No existe ningún empleado con nifnie " ++ vars.nifnie]' />
+			</when>
+		</choice>
+		<db:select doc:name="Consultar empleado"
+			doc:id="f11979d8-f952-41ce-bb95-38401ee76005"
+			config-ref="DB_MySQL_MTIS_Config" target="empleadoRows">
+			<db:sql><![CDATA[SELECT nifnie, nombreApellidos, email, naf, iban, idNivel, usuario, password, valido
+FROM empleados
+WHERE nifnie = :nifnie]]></db:sql>
+			<db:parameter-types />
+			<db:input-parameters><![CDATA[#[{
+  nifnie: vars.nifnie
+}]]]></db:input-parameters>
+		</db:select>
+		<ee:transform doc:name="Construir respuesta SOAP"
+			doc:id="39d023be-408d-4ae4-beac-1ab3f97bf95f">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+ns ns0 http://www.example.org/Empleados/
+var e = vars.empleadoRows[0]
+---
+{
+    body: {
+        ns0#consultarEmpleadoResponse: {
+            out: {
+                nifnie: e.nifnie,
+                nombreApellidos: e.nombreApellidos,
+                email: e.email,
+                naf: e.naf,
+                iban: e.iban,
+                idNivel: e.idNivel as Number,
+                usuario: e.usuario,
+                password: e.password,
+                valido: ((e.valido default 0) as Number) == 1
+            },
+            error: ""
+        }
+    } write "application/xml"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<set-variable value="#[payload]"
+			doc:name="Guardar SOAP response"
+			doc:id="914f8118-806f-4e7d-9590-e362895b8dc7"
+			variableName="soapResponse"
+			doc:description="Guarda EN MEMORIA la respuesta SOAP que acabamos de recibir" />
+		<file:write doc:name="Escribir JSON de éxito"
+			doc:id="398dd878-801a-4d60-94fb-0173aaac9f67"
+			path="#['salidas/empleados/consultarEmpleado-' ++ vars.nifnie ++ '-' ++ (now() as String {format: 'yyyyMMdd-HHmmssSSS'}) ++ '.json']"
+			config-ref="File_Config_Escritorio">
+			<file:content><![CDATA[#[%dw 2.0
+output application/json
+var e = vars.empleadoRows[0]
+---
+{
+  operacion: vars.operacion,
+  correcto: true,
+  fechaHora: now() as String {format: "yyyy-MM-dd HH:mm:ss"},
+  empleado: {
+    nifnie: e.nifnie,
+    nombreApellidos: e.nombreApellidos,
+    email: e.email,
+    naf: e.naf,
+    iban: e.iban,
+    idNivel: e.idNivel as Number,
+    usuario: e.usuario,
+    password: e.password,
+    valido: ((e.valido default 0) as Number) == 1
+  }
+}]]]></file:content>
+		</file:write>
+		<set-payload value="#[vars.soapResponse]"
+			doc:name="Restaurar SOAP response"
+			doc:id="02cbe847-7d2e-48fa-b3c1-259617678bb5" />
+		<error-handler>
+			<on-error-continue enableNotifications="true"
+				logException="true" doc:name="On Error Continue"
+				doc:id="fdd4e179-f3fd-4770-9078-0d8a6f910fee"
+				type="APP:WSKEY_INVALIDA">
+				<set-variable
+					value='#[{&#10;  mensaje: "WSKey inválida o no proporcionada",&#10;  detalle: "La WSKey recibida no existe en la tabla soapkey",&#10;  codigo: "APP:WSKEY_INVALIDA"&#10;}]'
+					doc:name="Set errorInfo"
+					doc:id="4e3bd0e9-b1e1-44b2-a0c6-740e692d08d4"
+					variableName="errorInfo" />
+				<flow-ref doc:name="Manejo de errores"
+					doc:id="3fa75aa3-163c-4acc-9241-8eddd529893c"
+					name="subflow-manejar-error-soap" />
+			</on-error-continue>
+			<on-error-continue enableNotifications="true"
+				logException="true" doc:name="On Error Continue"
+				doc:id="f1ec0eea-8594-45e9-b872-150ae62dceb4"
+				type="APP:EMPLEADO_NO_ENCONTRADO">
+				<set-variable
+					value='#[{&#10;  mensaje: "NIFNIE no encontrado o erróneo",&#10;  detalle: "No existe ningún empleado con nifnie " ++ ((vars.nifnie default "desconocido") as String),&#10;  codigo: "APP:EMPLEADO_NO_ENCONTRADO"&#10;}]'
+					doc:name="Set errorInfo"
+					doc:id="fa3b8d86-8104-41a9-95ef-578eb4a5f4b8"
+					variableName="errorInfo" />
+				<flow-ref doc:name="Manejo de errores"
+					doc:id="89ff602a-8370-434f-8833-d84cce137583"
+					name="subflow-manejar-error-soap" />
+			</on-error-continue>
+			<on-error-continue enableNotifications="true"
+				logException="true" doc:name="On Error Continue"
+				doc:id="267bef28-d8e4-44e6-8c40-26822db30ea0" type="ANY">
+				<set-variable
+					value='#[{&#10;  mensaje: "El proceso se ha tenido que cancelar por errores durante la ejecución",&#10;  detalle: (error.errorType.namespace default "APP") ++ ":" ++ (error.errorType.identifier default "UNKNOWN"),&#10;  codigo: (error.errorType.namespace default "APP") ++ ":" ++ (error.errorType.identifier default "UNKNOWN")&#10;}]'
+					doc:name="Set errorInfo"
+					doc:id="9ea5763d-e7c5-4fb5-832e-ce2938096626"
+					variableName="errorInfo" />
+				<flow-ref doc:name="Manejo de errores"
+					doc:id="6dd98434-b734-4450-8600-8f1166cf7c95"
+					name="subflow-manejar-error-soap" />
+			</on-error-continue>
+		</error-handler>
+	</flow>
+	<flow name="consultarTodosEmpleados:\soapkit-config">
+		<set-variable value="apartado1-empleados-soap"
+			doc:name="Set nombre flujo"
+			doc:id="3cf7cc0f-dc8b-4406-966c-85a581db9ca4"
+			variableName="nombreFlujo" />
+		<set-variable value="consultarTodosEmpleados"
+			doc:name="Set operacion"
+			doc:id="642b5e51-bd40-4e07-bdf6-7ad78bf56aff"
+			variableName="operacion" />
+		<logger level="INFO" doc:name="Body recibido"
+			doc:id="43962b78-7293-4b02-a7a0-affd9bee0e92"
+			message='#["[consultarTodosEmpleados] Body recibido: " ++ write(payload.body, "application/xml")]' />
+		<set-variable
+			value='#[payload.body.consultarTodosEmpleados.WSKey default ""]'
+			doc:name="Set WSKey" doc:id="067ae8c6-2ffc-4da5-970b-acc34014c679"
+			variableName="wskey" />
+		<flow-ref doc:name="Validar WSKey SOAP"
+			doc:id="62b07a93-7922-4582-bc9f-05f9fde11078"
+			name="subflow-validar-wskey-soap" />
+		<db:select doc:name="Consultar todos los empleados"
+			doc:id="1921f54b-1b49-4f58-98b8-33f874b57a89"
+			config-ref="DB_MySQL_MTIS_Config" target="empleadosRows">
+			<db:sql><![CDATA[SELECT nifnie, nombreApellidos, email, naf, iban, idNivel, usuario, password, valido
+FROM empleados
+ORDER BY id ASC]]></db:sql>
+		</db:select>
+		<logger level="INFO" doc:name="Número de empleados recuperados"
+			doc:id="b7580b7f-a72e-49af-8100-aad7dc7802e1"
+			message='#["[consultarTodosEmpleados] Número de empleados recuperados: " ++ sizeOf(vars.empleadosRows) as String]' />
+		<ee:transform doc:name="Construir respuesta SOAP"
+			doc:id="cb5b31ce-176f-47bb-8815-fd0805c9f2ea">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+ns ns0 http://www.example.org/Empleados/
+---
+{
+    body: {
+        ns0#consultarTodosEmpleadosResponse: {
+            out: vars.empleadosRows map (e) -> {
+                nifnie: e.nifnie,
+                nombreApellidos: e.nombreApellidos,
+                email: e.email,
+                naf: e.naf,
+                iban: e.iban,
+                idNivel: e.idNivel as Number,
+                usuario: e.usuario,
+                password: e.password,
+                valido: ((e.valido default 0) as Number) == 1
+            },
+            error: ""
+        }
+    } write "application/xml"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<set-variable value="#[payload]"
+			doc:name="Guardar SOAP response"
+			doc:id="82e22fae-4fb4-4049-85ac-4e07d907838a"
+			variableName="soapResponse" />
+		<file:write doc:name="Escribir JSON de éxito"
+			doc:id="1e66722b-7544-4b03-a558-4233c1e30ab4"
+			config-ref="File_Config_Escritorio"
+			path="#['salidas/empleados/consultarTodosEmpleados-' ++ (now() as String {format: 'yyyyMMdd-HHmmssSSS'}) ++ '.json']">
+			<file:content><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+  operacion: vars.operacion,
+  correcto: true,
+  fechaHora: now() as String {format: "yyyy-MM-dd HH:mm:ss"},
+  totalEmpleados: sizeOf(vars.empleadosRows),
+  empleados: vars.empleadosRows map (e) -> {
+    nifnie: e.nifnie,
+    nombreApellidos: e.nombreApellidos,
+    email: e.email,
+    naf: e.naf,
+    iban: e.iban,
+    idNivel: e.idNivel as Number,
+    usuario: e.usuario,
+    password: e.password,
+    valido: ((e.valido default 0) as Number) == 1
+  }
+}]]]></file:content>
+		</file:write>
+		<set-payload value="#[vars.soapResponse]"
+			doc:name="Restaurar SOAP response"
+			doc:id="cb764481-f633-47c8-ab77-0751df56bdc2" />
+		<error-handler>
+			<on-error-continue enableNotifications="true"
+				logException="true" doc:name="On Error Continue"
+				doc:id="2e656483-4c8b-4c2a-aa3f-aab8fe197b1e"
+				type="APP:WSKEY_INVALIDA">
+				<set-variable
+					value='#[{&#10;  mensaje: "WSKey inválida o no proporcionada",&#10;  detalle: "La WSKey recibida no existe en la tabla soapkey",&#10;  codigo: "APP:WSKEY_INVALIDA"&#10;}]'
+					doc:name="Set errorInfo"
+					doc:id="c5c67dfb-f82a-468c-a16d-b4c76a1e84b0"
+					variableName="errorInfo" />
+				<flow-ref doc:name="Manejo de errores"
+					doc:id="87fa1b79-3187-40f9-ac47-825ff6241ab0"
+					name="subflow-manejar-error-soap" />
+			</on-error-continue>
+			<on-error-continue enableNotifications="true"
+				logException="true" doc:name="On Error Continue"
+				doc:id="48b8aa65-e329-46af-abbe-6a9416fe8265" type="ANY">
+				<set-variable doc:name="Set errorInfo"
+					doc:id="dc72a4c6-13d8-4dca-a26f-4b28333c0d85"
+					variableName="errorInfo"
+					value='#[{&#10;  mensaje: "El proceso se ha tenido que cancelar por errores durante la ejecución",&#10;  detalle: (error.errorType.namespace default "APP") ++ ":" ++ (error.errorType.identifier default "UNKNOWN"),&#10;  codigo: (error.errorType.namespace default "APP") ++ ":" ++ (error.errorType.identifier default "UNKNOWN")&#10;}]' />
+				<flow-ref doc:name="Manejo de errores"
+					doc:id="73437b62-450f-442d-9bed-9ee640a4edad"
+					name="subflow-manejar-error-soap" />
+			</on-error-continue>
+		</error-handler>
+	</flow>
+</mule>

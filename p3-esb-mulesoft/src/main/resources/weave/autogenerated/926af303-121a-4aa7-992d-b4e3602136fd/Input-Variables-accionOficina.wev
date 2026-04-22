@@ -1,0 +1,10 @@
+%dw 2.0
+
+type auto_926af303_121a_4aa7_992d_b4e3602136fd_Input_Variables_accionOficina = {|
+  topic_origen: String, 
+  tipo_variable: String, 
+  accion_realizada: String, 
+  valor_anterior: Number, 
+  valor_nuevo: Number
+|}
+

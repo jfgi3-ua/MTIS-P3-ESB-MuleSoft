@@ -1,0 +1,188 @@
+#%RAML 1.0
+title: MTIS - Niveles REST
+version: v1
+mediaType: application/json
+
+traits:
+  securedByWsKey:
+    headers:
+      WSKey:
+        type: string
+        required: true
+        description: Clave REST obligatoria.
+        example: REST-DEV-KEY-001
+
+types:
+  ErrorEnvelope:
+    type: object
+    properties:
+      error:
+        type: string
+        required: true
+
+  Nivel:
+    type: object
+    properties:
+      nivel:
+        type: integer
+        required: true
+        minimum: 0
+        example: 2
+      descripcion:
+        type: string
+        required: true
+        minLength: 1
+        maxLength: 200
+        example: Acceso a laboratorios
+
+  NivelEnvelope:
+    type: object
+    properties:
+      data:
+        type: Nivel
+        required: true
+
+  OperationResult:
+    type: object
+    properties:
+      resource:
+        type: string
+        required: true
+        example: Nivel
+      operation:
+        type: string
+        required: true
+        enum: [UPDATED, DELETED]
+      id:
+        type: integer
+        required: true
+        example: 2
+      message:
+        type: string
+        required: true
+        example: Nivel actualizado correctamente.
+      timestamp:
+        type: datetime
+        required: true
+        example: 2026-02-16T18:10:22.123Z
+
+  OperationResultEnvelope:
+    type: object
+    properties:
+      data:
+        type: OperationResult
+        required: true
+
+/niveles:
+  post:
+    displayName: crearNivel
+    is: [securedByWsKey]
+    body:
+      application/json:
+        type: Nivel
+    responses:
+      201:
+        body:
+          application/json:
+            type: NivelEnvelope
+      400:
+        body:
+          application/json:
+            type: ErrorEnvelope
+      401:
+        body:
+          application/json:
+            type: ErrorEnvelope
+      409:
+        body:
+          application/json:
+            type: ErrorEnvelope
+      500:
+        body:
+          application/json:
+            type: ErrorEnvelope
+
+/niveles/{nivel}:
+  uriParameters:
+    nivel:
+      type: integer
+      required: true
+      minimum: 0
+      example: 2
+
+  get:
+    displayName: consultarNivel
+    is: [securedByWsKey]
+    responses:
+      200:
+        body:
+          application/json:
+            type: NivelEnvelope
+      401:
+        body:
+          application/json:
+            type: ErrorEnvelope
+      404:
+        body:
+          application/json:
+            type: ErrorEnvelope
+      500:
+        body:
+          application/json:
+            type: ErrorEnvelope
+
+  put:
+    displayName: modificarNivel
+    description: |
+      El nivel del path y el del body deben coincidir.
+      Si no coinciden, devolver 422.
+    is: [securedByWsKey]
+    body:
+      application/json:
+        type: Nivel
+    responses:
+      200:
+        body:
+          application/json:
+            type: OperationResultEnvelope
+      400:
+        body:
+          application/json:
+            type: ErrorEnvelope
+      401:
+        body:
+          application/json:
+            type: ErrorEnvelope
+      404:
+        body:
+          application/json:
+            type: ErrorEnvelope
+      422:
+        body:
+          application/json:
+            type: ErrorEnvelope
+      500:
+        body:
+          application/json:
+            type: ErrorEnvelope
+
+  delete:
+    displayName: borrarNivel
+    is: [securedByWsKey]
+    responses:
+      200:
+        body:
+          application/json:
+            type: OperationResultEnvelope
+      401:
+        body:
+          application/json:
+            type: ErrorEnvelope
+      404:
+        body:
+          application/json:
+            type: ErrorEnvelope
+      500:
+        body:
+          application/json:
+            type: ErrorEnvelope

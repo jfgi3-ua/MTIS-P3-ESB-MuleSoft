@@ -1,5 +1,441 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
-	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd"></mule>
+<mule xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns:wsc="http://www.mulesoft.org/schema/mule/wsc"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/wsc http://www.mulesoft.org/schema/mule/wsc/current/mule-wsc.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd">
+	<flow name="apartado4-procesoNUNVTSFlow"
+		doc:id="ce57073b-ee04-4c8a-8edc-00bd12d3d48d">
+		<http:listener doc:name="Listener"
+			doc:id="64d6a4ed-e4d9-494c-8094-d439edc98c54"
+			config-ref="HTTP_Listener_9094_ProcesoNUNVTS" path="/procesoNUNVTS">
+			<http:response
+				statusCode="#[(vars.httpStatus default 200) as Number]" />
+			<http:error-response
+				statusCode="#[(vars.httpStatus default 500) as Number]" />
+		</http:listener>
+		<set-variable value="apartado4-procesoNUNVTS"
+			doc:name="Set nombreFlujo"
+			doc:id="613c541e-6506-4d7e-9237-ceca5760acd0"
+			variableName="nombreFlujo" />
+		<set-variable
+			value="notificarUsuariosNoValidosEnTodasLasSalas"
+			doc:name="Set operacion"
+			doc:id="f73943ed-f136-481c-ab38-cf03c16bdc00"
+			variableName="operacion" />
+		<set-variable
+			value='#[(trim(((attributes.queryParams.email default "") as String)))]'
+			doc:name="Set emailDestino"
+			doc:id="3aff8683-8933-45c9-95f4-816008161581"
+			variableName="emailDestino" />
+		<set-variable value="#[(0) as Number]"
+			doc:name="Set contador totalSalas"
+			doc:id="1b009fac-fb3f-4527-978b-4b1c474cd5a4"
+			variableName="totalSalas" />
+		<set-variable value="#[(0) as Number]"
+			doc:name="Set contador totalEmpleadosRevisados"
+			doc:id="91150143-4866-4056-9973-a4c875d8ab7b"
+			variableName="totalEmpleadosRevisados" />
+		<set-variable value="#[(0) as Number]"
+			doc:name="Set contador totalNoValidos"
+			doc:id="481e39b0-5d57-4a21-b63a-1384961d137b"
+			variableName="totalNoValidos" />
+		<set-variable value="#[(0) as Number]"
+			doc:name="Set contador totalNotificaciones"
+			doc:id="a6179bcb-d641-4a46-9236-ab40731533ab"
+			variableName="totalNotificaciones" />
+		<set-variable value="#[null]"
+			doc:name="Set salaActualCodigo"
+			doc:id="3df703c1-c63f-4d0e-9225-0d8aeb085f80"
+			variableName="salaActualCodigo" />
+		<set-variable value="#[null]"
+			doc:name="Set salaActualNombre"
+			doc:id="5dd9505d-017d-49d5-855b-8e4daf5c84ff"
+			variableName="salaActualNombre" />
+		<set-variable value="#[null]"
+			doc:name="Set nifEmpleadoActual"
+			doc:id="c6e2a59b-cc4f-4981-9518-4d3ecf269b76"
+			variableName="nifEmpleadoActual" />
+		<set-variable value="#[null]"
+			doc:name="Set bodyRestEnviado"
+			doc:id="b1150007-84bd-40d1-95a2-e3a65d3c6c1a"
+			variableName="bodyRestEnviado" />
+		<try doc:name="Try" doc:id="ce489eae-e890-4ca5-916e-b6880efe6b8b">
+			<choice doc:name="¿Email correcto?"
+				doc:id="ceff81e2-d57a-4616-9474-d29d62f490c6">
+				<when
+					expression='#[(vars.emailDestino default "") == "" or !((vars.emailDestino default "") matches /(?i)^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/)]'>
+					<raise-error doc:name="APP:EMAIL_INVALIDO"
+						doc:id="e5559f25-a684-40d2-97e2-4bb42111124e"
+						type="APP:EMAIL_INVALIDO"
+						description="#[&quot;Email de entrada inválido o no informado: '&quot; ++ (vars.emailDestino default &quot;&quot;) ++ &quot;'&quot;]" />
+				</when>
+				<otherwise>
+					<logger level="INFO" doc:name="Email validado"
+						doc:id="5538ace1-f42d-4618-af05-ba572009abdf"
+						message='#["[apartado4-procesoNUNVTS] Email validado correctamente: " ++ vars.emailDestino]' />
+					<try doc:name="Try REST - Consultar todas las salas"
+						doc:id="0a5b3924-6ce8-4e9d-b9bd-a7c21a0b8ca4">
+						<http:request method="GET"
+							doc:name="Request: Consultar todas las salas REST"
+							doc:id="d616d3be-5929-4ad9-93e3-8cfe013119ca"
+							config-ref="HTTP_Request_REST_Config" path="/salas">
+							<http:headers><![CDATA[#[output application/java
+---
+{
+  "WSKey": "REST-DEV-KEY-001",
+  "Accept": "application/json"
+}]]]></http:headers>
+						</http:request>
+						<ee:transform
+							doc:name="Normalizar respuesta REST: Salas"
+							doc:id="f48b3e77-4150-4deb-89d1-467b1b32b64c">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+
+var salas = payload.data default []
+---
+{
+  data: salas map (sala) -> {
+    codigoSala: (sala.codigoSala default 0) as Number,
+    nombre: (sala.nombre default "") as String,
+    nivel: (sala.nivel default 0) as Number
+  }
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<set-variable
+							value="#[(sizeOf(payload.data default [])) as Number]"
+							doc:name="Set totalSalas tamaño actual"
+							doc:id="24deae3c-b12f-41f3-a768-e4b024db6ac3"
+							variableName="totalSalas" />
+						<logger level="INFO"
+							doc:name="Logger total salas recuperadas"
+							doc:id="f55c1420-c861-4687-82b4-45ddd0bc876f"
+							message='#["[apartado4-procesoNUNVTS] Salas recuperadas correctamente: " ++ ((vars.totalSalas default 0) as String)]' />
+						<error-handler>
+							<on-error-propagate enableNotifications="true"
+								logException="true" doc:name="On Error Propagate"
+								doc:id="330a3d26-81fb-4a75-ae77-8cce3581b481"
+								type="HTTP:CONNECTIVITY">
+								<set-variable
+									value='#[{&#10;  mensaje: "No se ha podido consultar el servicio REST de salas",&#10;  detalle:&#10;    if (lower((error.description default "") as String) contains "connection refused")&#10;      "No se ha podido conectar con el servicio REST de Salas al invocar GET /salas en http://127.0.0.1:8081/api/v1. Causa probable: el servidor REST de la práctica 1 está apagado o no está escuchando en el puerto 8081. Acción recomendada: arrancar el proyecto REST y comprobar que responde correctamente."&#10;    else&#10;      "No se ha podido conectar con el servicio REST de Salas al invocar GET /salas en http://127.0.0.1:8081/api/v1. Causa probable: servicio inaccesible, host/puerto incorrectos o problema de conectividad local. Acción recomendada: verificar que el servidor REST está levantado y que la URL base configurada en Mule es correcta.",&#10;  codigo: "APP:REST_SALAS_NO_DISPONIBLE",&#10;  httpStatus: 500,&#10;  respuestaUsuario: "El proceso se ha tenido que cancelar por errores durante la ejecución"&#10;}]'
+									doc:name="Set errorInfo"
+									doc:id="40745901-2de1-4d18-97e2-dff4767c772e"
+									variableName="errorInfo" />
+							</on-error-propagate>
+							<on-error-propagate enableNotifications="true"
+								logException="true" doc:name="On Error Propagate"
+								doc:id="3b54630e-2ed6-4b18-8688-5b49a48ec216"
+								type="HTTP:TIMEOUT">
+								<set-variable
+									value='#[{&#10;  mensaje: "Tiempo de espera agotado al consultar todas las salas",&#10;  detalle: "El servicio REST de Salas no respondió a tiempo al invocar GET /salas en http://127.0.0.1:8081/api/v1. Causa probable: el servidor REST está saturado, bloqueado o no responde correctamente. Acción recomendada: comprobar que el servicio está levantado, revisar su consola y volver a lanzar la petición.",&#10;  codigo: "APP:REST_SALAS_TIMEOUT",&#10;  httpStatus: 500,&#10;  respuestaUsuario: "El proceso se ha tenido que cancelar por errores durante la ejecución"&#10;}]'
+									doc:name="Set errorInfo"
+									doc:id="514f984b-1dbe-45f0-a5f0-0b9b72c9922e"
+									variableName="errorInfo" />
+							</on-error-propagate>
+							<on-error-propagate enableNotifications="true"
+								logException="true" doc:name="On Error Propagate"
+								doc:id="62c8c623-4ab0-4e49-8734-792089977e19"
+								type="HTTP:UNAUTHORIZED">
+								<set-variable
+									value='#[{&#10;  mensaje: "El servicio REST de salas rechazó la autenticación",&#10;  detalle: "El endpoint GET /salas devolvió 401 Unauthorized. Causa probable: la WSKey REST usada por Mule no existe en BD, no se está enviando correctamente o el servicio REST está validándola de forma distinta a la esperada. Acción recomendada: revisar la cabecera WSKey enviada por Mule y comprobar la tabla restkey.",&#10;  codigo: "APP:REST_SALAS_UNAUTHORIZED",&#10;  httpStatus: 500,&#10;  respuestaUsuario: "El proceso se ha tenido que cancelar por errores durante la ejecución"&#10;}]'
+									doc:name="Set errorInfo"
+									doc:id="2a014839-e92c-4ee4-adc9-edd4c5ed570c"
+									variableName="errorInfo" />
+							</on-error-propagate>
+							<on-error-propagate enableNotifications="true"
+								logException="true" doc:name="On Error Propagate"
+								doc:id="fcf68209-f7db-41fb-8a27-dbf42b99542c"
+								type="HTTP:INTERNAL_SERVER_ERROR">
+								<set-variable
+									value='#[{&#10;  mensaje: "Error interno del servicio REST al consultar todas las salas",&#10;  detalle: "El endpoint GET /salas respondió con un error interno del servidor REST. Causa probable: incidencia en la lógica del controlador, problema de acceso a base de datos o excepción no controlada en el proyecto REST de la práctica 1. Acción recomendada: revisar la consola del servicio REST y verificar que el endpoint /salas funciona correctamente de forma aislada.",&#10;  codigo: "APP:REST_SALAS_ERROR_INTERNO",&#10;  httpStatus: 500,&#10;  respuestaUsuario: "El proceso se ha tenido que cancelar por errores durante la ejecución"&#10;}]'
+									doc:name="Set errorInfo"
+									doc:id="b9e0abe0-f582-4390-a927-324f484c3cb1"
+									variableName="errorInfo" />
+							</on-error-propagate>
+							<on-error-propagate enableNotifications="true"
+								logException="true" doc:name="On Error Propagate"
+								doc:id="9c499783-f9fa-4878-8193-51d7313da5ac" type="ANY">
+								<set-variable
+									value='#[{&#10;  mensaje: "Error no previsto al consultar todas las salas",&#10;  detalle: "Se produjo un error no previsto al invocar o procesar la respuesta del endpoint GET /salas del servicio REST. Causa probable: respuesta inesperada, error de transformación en Mule o incidencia no contemplada en el servicio remoto. Acción recomendada: revisar la consola de Mule, la respuesta del servicio REST y el transformador que normaliza las salas.",&#10;  codigo: "APP:REST_SALAS_ERROR_GENERICO",&#10;  httpStatus: 500,&#10;  respuestaUsuario: "El proceso se ha tenido que cancelar por errores durante la ejecución"&#10;}]'
+									doc:name="Set errorInfo"
+									doc:id="1b79d0a0-010d-45bc-b7bc-9764cf8f7637"
+									variableName="errorInfo" />
+							</on-error-propagate>
+						</error-handler>
+					</try>
+					<foreach doc:name="For Each - Recorrer salas" doc:id="27a1d43b-6f7a-491a-97f1-950f81b8e408" collection="#[payload.data default []]">
+						<set-variable value="#[(payload.codigoSala default 0) as Number]" doc:name="Set salaActualCodigo" doc:id="c643cf1e-13b2-44da-a638-57c12db9a835" variableName="salaActualCodigo" />
+						<set-variable value='#[(payload.nombre default "") as String]' doc:name="Set salaActualNombre" doc:id="dae8fda5-f891-41a1-8cb0-5fc2529fc6a2" variableName="salaActualNombre" />
+						<logger level="INFO" doc:name="Logger código sala" doc:id="0489f1d3-3456-45ce-ad76-cf1993ea5fe7" message='#["[apartado4-procesoNUNVTS] Procesando sala código=" ++ (vars.salaActualCodigo as String) ++ " nombre=" ++ vars.salaActualNombre]' />
+						<try doc:name="Try SOAP - Control presencia sala" doc:id="8886e8ce-561c-49fe-a901-f1c6a1bc66cf">
+							<wsc:consume doc:name="Consume: controlEmpleadosSala" doc:id="99cc0578-de54-46dd-9986-7b19481c312f" config-ref="WSC_ControlPresenciaSOAP_Config" operation="controlEmpleadosSala">
+								<wsc:message>
+									<wsc:body><![CDATA[#[%dw 2.0
+output application/xml
+ns tns http://www.example.org/ControlPresencia/
+---
+{
+  tns#controlEmpleadosSala: {
+    tns#WSKey: "SOAP-DEV-KEY-001",
+    tns#in: vars.salaActualCodigo
+  }
+}]]]></wsc:body>
+								</wsc:message>
+							</wsc:consume>
+							<ee:transform doc:name="Normalizar respuesta SOAP: empleados presentes" doc:id="f54e4167-c517-4311-8670-65e9ad8240fe">
+								<ee:message>
+									<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+
+var empleados = payload.body.controlEmpleadosSalaResponse.out.*empleados default []
+var errorSoap = payload.body.controlEmpleadosSalaResponse.error default null
+---
+{
+  data: empleados map (emp) -> {
+    nif: (emp.nif default "") as String,
+    nombreApellidos: (emp.nombreApellidos default "") as String,
+    email: (emp.email default "") as String
+  },
+  total: sizeOf(empleados),
+  error: if (errorSoap == null or errorSoap == "") null else errorSoap as String
+}]]></ee:set-payload>
+								</ee:message>
+							</ee:transform>
+							<choice doc:name="¿SOAP controlEmpleadosSala correcto?" doc:id="fe760fbe-5e7f-45df-adfc-6c1d4b15abf5">
+								<when expression='#[(payload.error default null) != null and (payload.error default "") != ""]'>
+									<raise-error doc:name="APP:SOAP_CONTROL_EMPLEADOS_SALA" doc:id="e04d582b-7bc9-48ef-9117-b535dea4356a" type="APP:SOAP_CONTROL_EMPLEADOS_SALA" description='#[(payload.error default "Error al consultar empleados presentes en la sala") as String]' />
+								</when>
+							</choice>
+							<logger level="INFO" doc:name="Logger empleados presentes en la sala recuperados" doc:id="111075cb-4c07-4e68-a833-36838a157f72" message='#["[apartado4-procesoNUNVTS] Sala " ++ (vars.salaActualCodigo as String) ++ " -&gt; empleados presentes recuperados: " ++ ((payload.total default 0) as String)]' />
+							<error-handler>
+								<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="39e549cb-7c58-476a-be11-2641fe2b4155" type="APP:SOAP_CONTROL_EMPLEADOS_SALA">
+									<set-variable value='#[{&#10;  mensaje: "Error funcional al consultar los empleados presentes en una sala por SOAP",&#10;  detalle: "El servicio SOAP ControlPresencia devolvió un error funcional en la operación controlEmpleadosSala para la sala con código " ++ (vars.salaActualCodigo default "desconocido") as String ++ " (" ++ (vars.salaActualNombre default "sin-nombre") ++ "). Detalle devuelto por el servicio: " ++ (error.description default "Sin detalle"),&#10;  codigo: "APP:SOAP_CONTROL_EMPLEADOS_SALA",&#10;  httpStatus: 500,&#10;  respuestaUsuario: "El proceso se ha tenido que cancelar por errores durante la ejecución"&#10;}]' doc:name="Set errorInfo" doc:id="2571bcda-1e26-4051-8bf7-90d160296823" variableName="errorInfo" />
+								</on-error-propagate>
+								<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="8dac8a2a-cf3d-44ed-8785-e6b4d71ac882" type="ANY">
+									<set-variable value='#[{&#10;  mensaje: "Error técnico al consultar el servicio SOAP de control de presencia",&#10;  detalle:&#10;    if (lower((error.description default "") as String) contains "connection refused")&#10;      "No se ha podido conectar con el servicio SOAP ControlPresencia al invocar controlEmpleadosSala para la sala con código " ++ ((vars.salaActualCodigo default "desconocido") as String) ++ " (" ++ (vars.salaActualNombre default "sin-nombre") ++ "). Causa probable: Tomcat/Axis2 o el servicio ControlPresencia están apagados o el endpoint configurado en Mule es incorrecto. Acción recomendada: arrancar el servicio SOAP y verificar su endpoint."&#10;    else&#10;      "No se ha podido ejecutar correctamente la operación SOAP controlEmpleadosSala para la sala con código " ++ ((vars.salaActualCodigo default "desconocido") as String) ++ " (" ++ (vars.salaActualNombre default "sin-nombre") ++ "). Causa probable: servicio SOAP inaccesible, endpoint incorrecto o incidencia interna del servidor. Acción recomendada: revisar Tomcat, Axis2 y la configuración del Web Service Consumer.",&#10;  codigo: "APP:SOAP_CONTROL_PRESENCIA_NO_DISPONIBLE",&#10;  httpStatus: 500,&#10;  respuestaUsuario: "El proceso se ha tenido que cancelar por errores durante la ejecución"&#10;}]' doc:name="Set errorInfo" doc:id="55a0e187-c519-4050-9545-3df278599b7f" variableName="errorInfo" />
+								</on-error-propagate>
+							</error-handler>
+						</try>
+						<foreach doc:name="For Each - Recorrer empleados presentes" doc:id="c832d086-0565-4897-86ec-00c36aaeee58" collection="#[payload.data default []]">
+							<set-variable value='#[(payload.nif default "") as String]' doc:name="Set nifEmpleadoActual" doc:id="08ca5acb-a8b9-4987-a392-569a887d87c6" variableName="nifEmpleadoActual"/>
+							<set-variable value="#[((vars.totalEmpleadosRevisados default 0) + 1) as Number]" doc:name="Incrementar totalEmpleadosRevisados" doc:id="07bf61f4-dcf9-4c4a-99a4-e12354a1ac57" variableName="totalEmpleadosRevisados"/>
+							<logger level="INFO" doc:name="Logger empleado actual" doc:id="78c785b2-2795-4360-95cc-87114ecf3b92" message='#["[apartado4-procesoNUNVTS] Revisando empleado nif=" ++ vars.nifEmpleadoActual ++ " en sala código=" ++ (vars.salaActualCodigo as String)]' />
+							<try doc:name="Try SOAP - Consultar detalle empleado" doc:id="086ae26d-86d3-4443-969d-2fc1ea0b0c3b" >
+								<wsc:consume doc:name="Consume consultarEmpleado" doc:id="8862508b-8d09-4fee-bcbf-ba0efa500ebe" config-ref="WSC_EmpleadosSOAP_Config" operation="consultarEmpleado">
+									<wsc:message >
+										<wsc:body ><![CDATA[#[%dw 2.0
+output application/xml
+ns tns http://www.example.org/Empleados/
+---
+{
+  tns#consultarEmpleado: {
+    WSKey: "SOAP-DEV-KEY-001",
+    "in": vars.nifEmpleadoActual
+  }
+}]]]></wsc:body>
+									</wsc:message>
+								</wsc:consume>
+								<ee:transform doc:name="Normalizar respuesta SOAP: empleados actual" doc:id="e8489327-13f2-4391-a3aa-8427d138c52a" >
+									<ee:message >
+										<ee:set-payload ><![CDATA[%dw 2.0
+// Conseguimos dejar al respuesta del SOAP de Empleados en una forma más limpia para tratar luego
+output application/java
+
+var out = payload.body.consultarEmpleadoResponse.out default {}
+var errorSoap = payload.body.consultarEmpleadoResponse.error default null
+var nif = (out.nifnie default "") as String
+---
+{
+  data: {
+    nifnie: nif,
+    nombreApellidos: (out.nombreApellidos default "") as String,
+    email: (out.email default "") as String,
+    naf: (out.naf default "") as String,
+    iban: (out.iban default "") as String,
+    idNivel: (out.idNivel default 0) as Number,
+    usuario: (out.usuario default "") as String,
+    password: (out.password default "") as String,
+    valido: ((out.valido default false) as String) == "true"
+  },
+  // Si el SOAP no trae out y tampoco error, lo convertimos en un error funcional nuestro en vez de clasificarlo mal como "no válido"
+  error:
+    if (errorSoap != null and errorSoap != "") (errorSoap as String)
+    else if (nif == "") "No se ha recibido el detalle del empleado consultado"
+    else null
+}]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+								<choice doc:name="¿SOAP Empleados correcto?" doc:id="2bc334af-a931-4f46-92a0-5296d44e46d6" >
+									<when expression='#[(payload.error default null) != null and (payload.error default "") != ""]'>
+										<raise-error doc:name="APP:SOAP_CONSULTAR_EMPLEADO" doc:id="46882ac0-88f2-47db-9a63-f176a62c2d02" type="APP:SOAP_CONSULTAR_EMPLEADO" description='#[(payload.error default "Error al consultar el detalle del empleado") as String]'/>
+									</when>
+								</choice>
+								<choice doc:name="¿Empleado no válido?" doc:id="92d3f259-b46f-491e-bd9b-1f860e11ed83" >
+									<when expression="#[(payload.data.valido default true) == false]">
+										<set-variable value="#[((vars.totalNoValidos default 0) + 1) as Number]" doc:name="Incrementar totalNoValidos incrementar" doc:id="db3736d9-4d95-4044-9162-12a0caaf892f" variableName="totalNoValidos"/>
+										<try doc:name="Try REST - Notificar usuario no válido" doc:id="248175a3-f409-4783-a246-f567affab503" >
+											<set-variable value='#[{&#10;  nif: (payload.data.nifnie default vars.nifEmpleadoActual default "") as String,&#10;  // El email recibido por parámetro es al que hay que notificar sobre un usuario no válido&#10;  email: (vars.emailDestino default "") as String,&#10;  codigoSala: (vars.salaActualCodigo default 0) as Number,&#10;  nombreSala: (vars.salaActualNombre default "") as String&#10;}]' doc:name="Set bodyRestEnviado" doc:id="ad5dd474-a8bf-4922-9339-0abd34913150" variableName="bodyRestEnviado"/>
+											<logger level="INFO" doc:name="Logger empleado no válido detectado" doc:id="1bb600e6-385b-4ac8-9d69-9a025974ecdd" message='#["[apartado4-procesoNUNVTS] Notificando usuario no válido nif=" ++ vars.bodyRestEnviado.nif ++ " al email=" ++ vars.bodyRestEnviado.email ++ " desde sala código=" ++ (vars.salaActualCodigo as String)]' />
+											<ee:transform doc:name="Preparar body REST notificación" doc:id="4fa1561c-7e15-4bf5-94d6-3dc254fd5536" >
+												<ee:message >
+													<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+// Necesario porque el HTTP Request REST debe enviar un JSON en el body, aquí dejamos el payload exactamente
+// como el objeto que va a viajar.
+vars.bodyRestEnviado]]></ee:set-payload>
+												</ee:message>
+											</ee:transform>
+											<http:request method="POST" doc:name="Request: Notificar usuario no válido REST" doc:id="ccaa4d7f-8ca7-4693-9d7d-ab877c91a2fd" path="/notificaciones/usuario-no-valido" config-ref="HTTP_Request_REST_Config">
+												<http:headers ><![CDATA[#[output application/java
+---
+{
+  "WSKey": "REST-DEV-KEY-001",
+  "Content-Type": "application/json",
+  "Accept": "application/json"
+}]]]></http:headers>
+											</http:request>
+											<ee:transform doc:name="Normalizar la respuesta REST" doc:id="dfb0b75e-8b66-4144-a265-cf93678d9fe0" >
+												<ee:message >
+													<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+
+var data = payload.data default {}
+---
+{
+  data: {
+    enviado: (data.enviado default false) as Boolean,
+    detalle: (data.detalle default "") as String
+  },
+  error: payload.error default null
+}]]></ee:set-payload>
+												</ee:message>
+											</ee:transform>
+											<choice doc:name="¿Notificación REST correcta?" doc:id="8ad0a498-8c45-4565-90c7-3525742aeff5" >
+												<when expression="#[(payload.error default null) != null or (payload.data.enviado default false) == false]">
+													<raise-error doc:name="APP:REST_NOTIFICAR_USUARIO_NO_VALIDO" doc:id="db6904e8-1f08-435c-bc23-8eb51e5a957d" type="APP:REST_NOTIFICAR_USUARIO_NO_VALIDO" description='#[if ((payload.error default null) != null and (payload.error default "") != "") (payload.error as String) else "El servicio REST de notificación respondió sin confirmar el envío del email"]'/>
+												</when>
+												<otherwise >
+													<logger level="INFO" doc:name="Notificación enviada correctamente" doc:id="15c5ec51-d335-45da-bc1d-a049d063fbcd" message='#["[apartado4-procesoNUNVTS] Notificación enviada correctamente. Detalle: " ++ (payload.data.detalle default "Sin detalle")]'/>
+													<set-variable value="#[((vars.totalNotificaciones default 0) + 1) as Number]" doc:name="Incrementar totalNotificaciones" doc:id="11b9ccad-c043-44c4-811a-1a9a8951b22a" variableName="totalNotificaciones"/>
+												</otherwise>
+											</choice>
+											<error-handler >
+												<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="af1d1690-2c11-43a1-9211-8da2f5ab87ba" type="APP:REST_NOTIFICAR_USUARIO_NO_VALIDO">
+													<set-variable value='#[{&#10;  mensaje: "Error funcional al notificar un usuario no válido por REST",&#10;  detalle: "El servicio REST de notificaciones respondió, pero no confirmó correctamente el envío del aviso para el empleado con nif " ++ (vars.nifEmpleadoActual default "desconocido") ++ ", sala código " ++ ((vars.salaActualCodigo default 0) as String) ++ " y email destino " ++ (vars.emailDestino default "sin-email") ++ ". Detalle funcional devuelto por el servicio: " ++ (error.description default "Sin detalle"),&#10;  codigo: "APP:REST_NOTIFICAR_USUARIO_NO_VALIDO",&#10;  httpStatus: 500,&#10;  respuestaUsuario: "El proceso se ha tenido que cancelar por errores durante la ejecución"&#10;}]' doc:name="Set errorInfo" doc:id="a2e42b2c-a0f7-4569-acff-df9f05a9687f" variableName="errorInfo"/>
+												</on-error-propagate>
+												<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="9b2bba44-0c4a-4228-ab83-96f7707c77f3" type="HTTP:CONNECTIVITY">
+													<set-variable value='#[{&#10;  mensaje: "No se ha podido contactar con el servicio REST de notificación de usuario no válido",&#10;  detalle:&#10;    if (lower((error.description default "") as String) contains "connection refused")&#10;      "No se ha podido conectar con el endpoint POST /notificaciones/usuario-no-valido del servicio REST en http://127.0.0.1:8081/api/v1. Causa probable: el servidor REST de la práctica 1 está apagado o no está escuchando en el puerto 8081. Acción recomendada: arrancar el proyecto REST y comprobar que el endpoint de notificaciones responde."&#10;    else&#10;      "No se ha podido invocar el endpoint POST /notificaciones/usuario-no-valido del servicio REST. Causa probable: servicio inaccesible, host/puerto incorrectos o problema de conectividad local. Acción recomendada: revisar que el servidor REST está levantado y que la configuración HTTP de Mule es correcta.",&#10;  codigo: "APP:REST_NOTIFICACION_NO_DISPONIBLE",&#10;  httpStatus: 500,&#10;  respuestaUsuario: "El proceso se ha tenido que cancelar por errores durante la ejecución"&#10;}]' doc:name="Set errorInfo" doc:id="79496dce-0c16-4a91-b805-97c93d3d244a" variableName="errorInfo"/>
+												</on-error-propagate>
+												<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="82fa7199-5fe4-4b30-ad26-c96d0ba39047" type="HTTP:TIMEOUT">
+													<set-variable value='#[{&#10;  mensaje: "Tiempo de espera agotado al notificar usuario no válido",&#10;  detalle: "El endpoint POST /notificaciones/usuario-no-valido no respondió a tiempo. Causa probable: el servicio REST está saturado, bloqueado o no responde correctamente. Acción recomendada: comprobar que el servidor REST está levantado, revisar su consola y repetir la prueba.",&#10;  codigo: "APP:REST_NOTIFICACION_TIMEOUT",&#10;  httpStatus: 500,&#10;  respuestaUsuario: "El proceso se ha tenido que cancelar por errores durante la ejecución"&#10;}]' doc:name="Set errorInfo" doc:id="2c71fec7-d8d3-4bf7-907b-ad40a7ce5e24" variableName="errorInfo"/>
+												</on-error-propagate>
+												<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="ee50496b-46c5-4563-a6a4-07842ae44e98" type="HTTP:UNAUTHORIZED">
+													<set-variable value='#[{&#10;  mensaje: "El servicio REST de notificaciones rechazó la autenticación",&#10;  detalle: "El endpoint POST /notificaciones/usuario-no-valido devolvió 401 Unauthorized. Causa probable: la WSKey REST usada por Mule no existe en BD, no se está enviando correctamente o el servicio REST la está validando de forma distinta a la esperada. Acción recomendada: revisar la cabecera WSKey enviada por Mule y comprobar la tabla restkey.",&#10;  codigo: "APP:REST_NOTIFICACION_UNAUTHORIZED",&#10;  httpStatus: 500,&#10;  respuestaUsuario: "El proceso se ha tenido que cancelar por errores durante la ejecución"&#10;}]' doc:name="Set errorInfo" doc:id="cb9fed39-72cb-4773-93d9-609ddf00d925" variableName="errorInfo"/>
+												</on-error-propagate>
+												<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="649ff5d9-134c-4583-bb4a-78adbefb51d9" type="HTTP:INTERNAL_SERVER_ERROR">
+													<set-variable value='#[{&#10;  mensaje: "Error interno del servicio REST al notificar usuario no válido",&#10;  detalle: "El endpoint POST /notificaciones/usuario-no-valido respondió con un error interno del servidor REST. Causa probable: incidencia en la lógica del controlador de notificaciones, problema de acceso a base de datos o excepción no controlada en el proyecto REST de la práctica 1. Acción recomendada: revisar la consola del servicio REST y verificar que el endpoint de notificación funciona correctamente de forma aislada.",&#10;  codigo: "APP:REST_NOTIFICACION_ERROR_INTERNO",&#10;  httpStatus: 500,&#10;  respuestaUsuario: "El proceso se ha tenido que cancelar por errores durante la ejecución"&#10;}]' doc:name="Set errorInfo" doc:id="74f58b5b-0b36-4dcb-be18-8cdcdb48b6ee" variableName="errorInfo"/>
+												</on-error-propagate>
+												<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="66ea7260-2fd3-43fa-86be-a430d0378c28" type="ANY">
+													<set-variable value='#[{&#10;  mensaje: "Error no previsto al notificar usuario no válido por REST",&#10;  detalle: "Se produjo un error no previsto al invocar o procesar la respuesta del endpoint POST /notificaciones/usuario-no-valido. Causa probable: respuesta inesperada, error de transformación en Mule o incidencia no contemplada en el servicio REST. Acción recomendada: revisar la consola de Mule, la respuesta del servicio REST y el transformador que normaliza la notificación.",&#10;  codigo: "APP:REST_NOTIFICACION_ERROR_GENERICO",&#10;  httpStatus: 500,&#10;  respuestaUsuario: "El proceso se ha tenido que cancelar por errores durante la ejecución"&#10;}]' doc:name="Set errorInfo" doc:id="ec6c5289-285b-467b-8dff-c4216b2648dd" variableName="errorInfo" />
+												</on-error-propagate>
+											</error-handler>
+										</try>
+									</when>
+									<otherwise >
+										<logger level="INFO" doc:name="Logger empleado válido" doc:id="cbf7fd11-de1e-4967-b234-74c3203ce6af" message='#["[apartado4-procesoNUNVTS] Empleado válido: " ++ payload.data.nifnie ++ ". No se notificará."]'/>
+									</otherwise>
+								</choice>
+								<error-handler >
+									<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="01baa92c-b28c-40f7-897a-72a3658d25ed" type="APP:SOAP_CONSULTAR_EMPLEADO">
+										<set-variable value='#[{&#10;  mensaje: "Error funcional al consultar el detalle de un empleado por SOAP",&#10;  detalle: "El servicio SOAP Empleados devolvió un error funcional en la operación consultarEmpleado para el empleado con nif " ++ (vars.nifEmpleadoActual default "desconocido") ++ " en la sala con código " ++ ((vars.salaActualCodigo default "desconocido") as String) ++ " (" ++ (vars.salaActualNombre default "sin-nombre") ++ "). Detalle devuelto por el servicio: " ++ (error.description default "Sin detalle"),&#10;  codigo: "APP:SOAP_CONSULTAR_EMPLEADO",&#10;  httpStatus: 500,&#10;  respuestaUsuario: "El proceso se ha tenido que cancelar por errores durante la ejecución"&#10;}]' doc:name="Set errorInfo" doc:id="dc118e7b-f545-49ea-a266-ca876f16d631" variableName="errorInfo"/>
+									</on-error-propagate>
+									<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="8db6f881-f24a-42db-b3fc-f8ed8aaf9c22" type="ANY">
+										<set-variable value='#[vars.errorInfo default {&#10;  mensaje: "Error técnico al consultar el servicio SOAP de empleados",&#10;  detalle:&#10;    if (lower((error.description default "") as String) contains "connection refused")&#10;      "No se ha podido conectar con el servicio SOAP Empleados al consultar el detalle del empleado con nif " ++ (vars.nifEmpleadoActual default "desconocido") ++ ". Causa probable: Tomcat/Axis2 o el servicio Empleados están apagados o el endpoint configurado en Mule es incorrecto. Acción recomendada: arrancar el servicio SOAP y verificar su endpoint."&#10;    else&#10;      "No se ha podido ejecutar correctamente la operación SOAP consultarEmpleado para el nif " ++ (vars.nifEmpleadoActual default "desconocido") ++ ". Causa probable: servicio SOAP inaccesible, endpoint incorrecto o incidencia interna del servidor. Acción recomendada: revisar Tomcat, Axis2 y la configuración del Web Service Consumer.",&#10;  codigo: "APP:SOAP_SERVICIO_EMPLEADOS_NO_DISPONIBLE",&#10;  httpStatus: 500,&#10;  respuestaUsuario: "El proceso se ha tenido que cancelar por errores durante la ejecución"&#10;}]' doc:name="Set errorInfo" doc:id="29f1958c-aef0-4afa-88cf-458f5eae31db" variableName="errorInfo"/>
+									</on-error-propagate>
+								</error-handler>
+							</try>
+						</foreach>
+					</foreach>
+					<try doc:name="Try BD - Registrar ejercicio4 OK" doc:id="ab2f84ab-00cb-492e-961b-d152e0cef272" >
+						<db:insert doc:name="Insert ejercicio4 OK" doc:id="33ecc449-1411-4083-b8da-5c5a8f8ac017" config-ref="DB_MySQL_MTIS_Config">
+							<db:sql ><![CDATA[INSERT INTO ejercicio4 (ejecutado_correctamente, fecha_hora)
+VALUES (:ejecutado_correctamente, NOW())]]></db:sql>
+							<db:input-parameters ><![CDATA[#[{
+  ejecutado_correctamente: 1
+}]]]></db:input-parameters>
+						</db:insert>
+						<error-handler >
+							<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="eaad9cb4-7980-4f44-adb2-a32754984cd2" type="ANY">
+								<set-variable value='#[{&#10;  mensaje: "Error al registrar en base de datos la ejecución correcta del ejercicio 4",&#10;  detalle: "La orquestación terminó funcionalmente, pero no se pudo insertar el registro de auditoría en la tabla ejercicio4. Causa probable: problema de conexión con MySQL, configuración incorrecta del conector DB o ausencia de la tabla ejercicio4. Acción recomendada: comprobar la conexión a la base de datos, el config-ref DB_MySQL_MTIS_Config y la existencia de la tabla ejercicio4.",&#10;  codigo: "APP:BD_EJERCICIO4_INSERT_ERROR",&#10;  httpStatus: 500,&#10;  respuestaUsuario: "El proceso se ha tenido que cancelar por errores durante la ejecución"&#10;}]' doc:name="Set errorInfo" doc:id="f556a88d-731e-4a6a-8fb2-9c03500fcf5d" variableName="errorInfo"/>
+							</on-error-propagate>
+						</error-handler>
+					</try>
+					<set-variable value="#[(200) as Number]" doc:name="Set httpStatus" doc:id="7321676c-175f-4ef2-a6a6-57957d7f0eee" variableName="httpStatus" />
+					<ee:transform doc:name="Transform Message" doc:id="17d97de5-f6ec-4070-9c9d-c265d491ba6f">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  mensaje: "el proceso ha finalizado satisfactoriamente",
+  resumen: {
+    emailDestino: (vars.emailDestino default "") as String,
+    totalSalas: (vars.totalSalas default 0) as Number,
+    totalEmpleadosRevisados: (vars.totalEmpleadosRevisados default 0) as Number,
+    totalNoValidosDetectados: (vars.totalNoValidos default 0) as Number,
+    totalNotificacionesEnviadas: (vars.totalNotificaciones default 0) as Number
+  }
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+				</otherwise>
+			</choice>
+			<error-handler>
+				<on-error-propagate enableNotifications="true"
+					logException="true" doc:name="On Error Propagate"
+					doc:id="9506ab83-56be-4310-8dc7-bb7fdebdddb0"
+					type="APP:EMAIL_INVALIDO">
+					<set-variable
+						value="#[{&#10;  mensaje: &quot;El parámetro query 'email' es obligatorio y debe tener un formato válido&quot;,&#10;  detalle: &quot;Se ha recibido un email de entrada vacío o con formato inválido. Valor recibido: '&quot; ++ (vars.emailDestino default &quot;&quot;) ++ &quot;'&quot;,&#10;  codigo: &quot;APP:EMAIL_INVALIDO&quot;,&#10;  httpStatus: 400,&#10;  respuestaUsuario: &quot;El proceso se ha tenido que cancelar por errores durante la ejecución&quot;&#10;}]"
+						doc:name="Set errorInfo"
+						doc:id="99f526e8-d354-4239-957c-eb795ccba131"
+						variableName="errorInfo" />
+				</on-error-propagate>
+				<on-error-propagate enableNotifications="true"
+					logException="true" doc:name="On Error Propagate"
+					doc:id="4b50abea-385e-4a34-9a79-b674fc7af8d5" type="ANY">
+					<set-variable
+						value='#[vars.errorInfo default {&#10;  mensaje: "Error no previsto durante la ejecución del flujo del apartado 4",&#10;  detalle: "Se produjo un error no previsto en la orquestación NotificarUsuariosNoValidosEnTodasLasSalas. Causa probable: incidencia no contemplada en alguno de los bloques del flujo o error de transformación no interceptado por handlers más específicos. Acción recomendada: revisar el último bloque ejecutado en Mule y verificar los handlers específicos de cada tramo.",&#10;  codigo: "APP:APARTADO4_ERROR_GENERICO",&#10;  httpStatus: 500,&#10;  respuestaUsuario: "El proceso se ha tenido que cancelar por errores durante la ejecución"&#10;}]'
+						doc:name="Set errorInfo"
+						doc:id="7368fe48-0e8b-470a-afe0-1567e3184b0f"
+						variableName="errorInfo" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+		<error-handler>
+			<on-error-continue enableNotifications="true"
+				logException="true" doc:name="On Error Continue"
+				doc:id="1efc5fc1-5a07-4150-be7f-9a93841a2e33" type="ANY">
+				<set-variable
+					value='#[vars.errorInfo default {&#10;  mensaje: "El proceso se ha tenido que cancelar por errores durante la ejecución",&#10;  detalle: "Se produjo un error no controlado específicamente por los handlers del flujo. Acción recomendada: revisar la consola de Mule para identificar el último bloque ejecutado y completar la gestión específica de ese caso.",&#10;  codigo: ((error.errorType.namespace default "APP") ++ ":" ++ (error.errorType.identifier default "UNKNOWN")),&#10;  httpStatus: 500,&#10;  respuestaUsuario: "El proceso se ha tenido que cancelar por errores durante la ejecución"&#10;}]'
+					doc:name="Set errorInfo"
+					doc:id="2776c4b6-2a61-43f0-aa0c-862230cc3ecb"
+					variableName="errorInfo" />
+				<flow-ref doc:name="Manejo de errores"
+					doc:id="8994b3e2-26c6-4d10-83a1-b6b0529923b6"
+					name="subflow-manejar-error-rest" />
+			</on-error-continue>
+		</error-handler>
+	</flow>
+</mule>

@@ -1,0 +1,12 @@
+%dw 2.0
+
+type auto_3f14e5d1_3b1e_418b_92d0_45c41971a697_Input_Variables_estadoHvacActualizado = {|
+  office_id: Number, 
+  temperatura_actual: Number, 
+  iluminacion_actual: Number, 
+  hvac_mode: String, 
+  hvac_target: Number, 
+  light_mode: String, 
+  light_target: Number | Null
+|}
+

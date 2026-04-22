@@ -1,0 +1,235 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:email="http://www.mulesoft.org/schema/mule/email"
+	xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd http://www.mulesoft.org/schema/mule/email http://www.mulesoft.org/schema/mule/email/current/mule-email.xsd">
+	<sub-flow name="subflow-validar-wskey-soap"
+		doc:id="ae140096-ea61-4046-a9dd-78da78f223b0">
+		<db:select doc:name="Validar WSKey SOAP"
+			doc:id="342875e5-e14a-4067-9d8f-39416adbdb6f"
+			config-ref="DB_MySQL_MTIS_Config" target="wskeyRows"
+			doc:description='Consulta si la WSKey existe en la tabla soapkey&#10;, de lo contrario, lanza error.&#10;&#10;Campo "Target" en "Advanced": wskeyRows -&gt; Esto es importante: el resultado de la consulta no pisa el payload, sino que se guarda en la variable vars.wskeyRows.&#10;&#10;Campo SQL Query Text: &#10;:wskey es el parámetro SQL&#10;&#10;vars.wskey es la variable que tendrá el valor recibido desde el flow principal&#10;&#10;default "" evita que sea null'>
+			<db:sql><![CDATA[SELECT soap_key FROM soapkey WHERE soap_key = :wskey]]></db:sql>
+			<db:input-parameters><![CDATA[#[{ wskey: vars.wskey default "" }]]]></db:input-parameters>
+		</db:select>
+		<choice doc:name="¿Existe WSKey?"
+			doc:id="56f774ec-330a-409d-81c8-03518a2cfe82">
+			<when expression="#[isEmpty(vars.wskeyRows)]">
+				<raise-error doc:name="WSKey inválida"
+					doc:id="ef84986c-bfe8-4580-ad80-cc25aa228836"
+					type="APP:WSKEY_INVALIDA"
+					description="WSKey inválida o no proporcionada" />
+			</when>
+		</choice>
+	</sub-flow>
+	<sub-flow name="subflow-validar-wskey-rest" doc:id="f938c2d1-ef27-4d83-923d-3c255435eb00" >
+		<db:select doc:name="Validar WSKey REST" doc:id="9e9a28a6-2f03-448a-bc40-479220d40546" config-ref="DB_MySQL_MTIS_Config" target="wskeyRowsRest">
+			<db:sql ><![CDATA[SELECT rest_key
+FROM restkey
+WHERE rest_key = :wskey]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{ wskey: vars.wskey default "" }]]]></db:input-parameters>
+		</db:select>
+		<choice doc:name="¿Existe WSKey?" doc:id="6012d7ee-247f-4fd9-8290-1ea8c3b18cf0" >
+			<when expression="#[isEmpty(vars.wskeyRowsRest)]">
+				<raise-error doc:name="WSKey inválida" doc:id="a31e7948-8c1c-4465-a3cf-f51c08d10c04" type="APP:WSKEY_INVALIDA" description="WSKey inválida o no proporcionada"/>
+			</when>
+		</choice>
+	</sub-flow>
+	<sub-flow name="subflow-registrar-error-flujo"
+		doc:id="bb141b4f-f10e-4be3-84c5-413ccfcae664">
+		<try doc:name="Try" doc:id="04f812af-cfc2-4e60-879e-5cf21d665d7f" >
+			<db:insert doc:name="Insertar error en erroresFlujos" doc:id="d7af4333-d552-45c9-8cbe-81790945914d" config-ref="DB_MySQL_MTIS_Config" doc:description="Este subflow espera que el flow que lo llame ya haya rellenado:&#10;&#10;- vars.nombreFlujo&#10;&#10;- vars.mensajeError&#10;&#10;- vars.detalleError&#10;&#10;-vars.operacion">
+			<db:sql><![CDATA[INSERT INTO erroresFlujos (flujo, operacion, mensaje_error, detalle_error)
+VALUES (:flujo, :operacion, :mensaje_error, :detalle_error)]]></db:sql>
+			<db:input-parameters><![CDATA[#[{
+  flujo: vars.nombreFlujo default "flujo-desconocido",
+  operacion: vars.operacion default "operacion-desconocida",
+  mensaje_error: vars.mensajeError default "Error no controlado",
+  detalle_error: vars.detalleError default "Sin detalle"
+}]]]></db:input-parameters>
+		</db:insert>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue: Ignorar fallo al registrar error en BD" doc:id="82c06608-a9bf-449d-9317-3d53bd02e775" type="ANY">
+					<logger level="WARN" doc:name="Logger fallo registro error BD" doc:id="4d3ee39d-94b8-494d-925f-b369c91c24cf" message='#["[subflow-registrar-error-flujo] No se pudo registrar el error en erroresFlujos. Detalle técnico: " ++ (error.description default "Sin detalle")]'/>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="subflow-consultar-empleado-existente" doc:id="1e04b180-52ed-4d76-8fcd-2be73d1c4ff3" >
+		<db:select doc:name="Comprobar empleado existe" doc:id="e3df2227-d333-4531-aa11-45b8b0f2b70f" config-ref="DB_MySQL_MTIS_Config" target="empleadoExistenteRows">
+			<db:sql ><![CDATA[SELECT nifnie
+FROM empleados
+WHERE nifnie = :nifnie]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+	nifnie: vars.empleadoEntrada.nifnie default ""
+}]]]></db:input-parameters>
+		</db:select>
+	</sub-flow>
+	<sub-flow name="subflow-comprobar-nivel-existe-rest" doc:id="98773907-3ee1-4bdb-81eb-eb8f3a0e297b" >
+		<db:select doc:name="Comprobar nivel existe" doc:id="4d5e73bc-d616-41f6-86cd-eba07b286356" config-ref="DB_MySQL_MTIS_Config" target="nivelRows">
+			<db:sql ><![CDATA[SELECT nivel
+FROM niveles
+WHERE nivel = :nivel]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+  nivel: (vars.nivelEntrada.nivel default 0) as Number
+}]]]></db:input-parameters>
+		</db:select>
+		<choice doc:name="¿Nivel existe?" doc:id="fd9b6518-0c10-44a8-98c6-06d1b587805e" >
+			<when expression="#[!isEmpty(vars.nivelRows)]">
+				<raise-error doc:name=" Nivel existente" doc:id="0f64b12f-bd8b-4cb8-a501-6dd1b2b0ff4f" type="APP:NIVEL_YA_EXISTE" description='#["Ya existe un nivel con valor " ++ ((vars.nivelEntrada.nivel default 0) as String)]'/>
+			</when>
+		</choice>
+	</sub-flow>
+	<sub-flow name="subflow-comprobar-nivel-no-existe-rest" doc:id="bc3d7fac-8e5c-462d-9d24-6f4e49f586a4" >
+		<db:select doc:name="Comprobar nivel existe" doc:id="6ba359af-b5d0-4967-8f84-a00a149901d2" config-ref="DB_MySQL_MTIS_Config" target="nivelRows">
+			<db:sql ><![CDATA[SELECT nivel
+FROM niveles
+WHERE nivel = :nivel]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+  nivel: vars.nivel
+}]]]></db:input-parameters>
+		</db:select>
+		<choice doc:name="¿Nivel existe?" doc:id="ee3bd5e5-834f-43d0-bf0f-4fd2f197e4b4" >
+			<when expression="#[isEmpty(vars.nivelRows)]">
+				<raise-error doc:name="Nivel no existente" doc:id="8246a81e-640a-4825-a846-946b5242a46f" type="APP:NIVEL_NO_ENCONTRADO" description='#["No existe ningún nivel con valor " ++ (vars.nivel as String)]'/>
+			</when>
+		</choice>
+	</sub-flow>
+	<sub-flow name="subflow-comprobar-nivel-no-existe-soap" doc:id="0b2cef6e-3a9e-4a2e-9a8a-d8574721c8a3" >
+		<db:select doc:name="Comprobar nivel existe" doc:id="ba6c0e4a-5720-475d-b90d-8be38b8c1fe4" config-ref="DB_MySQL_MTIS_Config" target="nivelRows">
+			<db:sql ><![CDATA[SELECT id
+FROM niveles
+WHERE id = :idNivel]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+  idNivel: (vars.empleadoEntrada.idNivel default 0) as Number
+}]]]></db:input-parameters>
+		</db:select>
+		<choice doc:name="¿Nivel existe?" doc:id="cba11c70-13f2-490c-8b63-29429c950d15" >
+			<when expression="#[isEmpty(vars.nivelRows)]">
+				<raise-error doc:name="Nivel no existente" doc:id="ac2d1c60-d74a-48ad-804a-b063294163de" type="APP:NIVEL_NO_EXISTE" description='#["No existe ningún nivel con id " ++ (((vars.empleadoEntrada.idNivel default 0) as Number) as String)]'/>
+			</when>
+		</choice>
+	</sub-flow>
+	<sub-flow name="subflow-enviar-email-error"
+		doc:id="3d46df8e-5be0-44ad-914f-d44af7bfe42c">
+		<try doc:name="Try" doc:id="87f1a2ab-bf96-4ff5-8898-bf0e6a8f9b44">
+			<email:send doc:name="Enviar email de error" doc:id="746179fe-8172-4dc3-b9ea-2ff0a6a81252" config-ref="SMTP_fakeSMTP_Config" subject="#['[MTIS][ERROR] ' ++ (vars.nombreFlujo default 'flujo-desconocido')]" fromAddress="${smtp.from}">
+			<email:to-addresses>
+				<email:to-address value="${smtp.to.errors}" />
+			</email:to-addresses>
+			<email:body>
+				<email:content><![CDATA[#[%dw 2.0
+output text/plain
+---
+'El proceso se ha tenido que cancelar por errores durante la ejecución' ++ 
+'\n\nFlujo: ' ++ (vars.nombreFlujo default 'flujo-desconocido') ++ 
+'\nOperación: ' ++ (vars.operacion default 'operacion-desconocida') ++ 
+'\nMensaje: ' ++ (vars.mensajeError default 'Sin mensaje') ++ 
+'\nDetalle: ' ++ (vars.detalleError default 'Sin detalle') ++ 
+'\nFecha: ' ++ (now() as String {format: "yyyy-MM-dd HH:mm:ss"})]]]></email:content>
+			</email:body>
+		</email:send>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="e7390fa7-7906-4948-bb88-1044e0440302" type="ANY">
+					<logger level="WARN" doc:name="Logger" doc:id="8a5e96bf-d9b5-409e-980f-24e65979ed21" message='#["[subflow-enviar-email-error] No se pudo enviar el email de error, pero el error ya fue registrado en BD. Detalle técnico: " ++ (error.description default "Sin detalle")]'/>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="subflow-manejar-error-soap"
+		doc:id="f4bf9683-7bbf-44c9-8f8c-ebf435fc3049">
+
+		<flow-ref doc:name="Manejo de error común" doc:id="46c19fb3-94e8-4ab4-8781-0bdc431a5de8" name="subflow-manejar-error-comun"/>
+		<ee:transform doc:name="SOAP Fault">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+---
+{
+    body: {
+        soap#Fault: {
+            faultcode: "soap:Server",
+            faultstring: vars.mensajeError default "Error no controlado",
+            detail: {
+                codigo: vars.codigoError default "APP:UNKNOWN",
+                descripcion: vars.detalleError default "Sin detalle"
+            }
+        }
+    } write "application/xml"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="subflow-manejar-error-rest" doc:id="0c3f69d4-19a6-4f59-9c93-e9b329909719" >
+		<flow-ref doc:name="Manejo de error común" doc:id="bd33a13b-664e-44ea-a1a8-bdaa0954d213" name="subflow-manejar-error-comun"/>
+		<set-variable value="#[(vars.errorInfo.httpStatus default 500) as Number]" doc:name="Set httpStatus REST" doc:id="b649a497-1790-471e-b334-6f5f4f487ea8" variableName="httpStatus"/>
+		<ee:transform doc:name="REST Fault" doc:id="169b34a7-251d-41b9-a9b1-60b0ef579654" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	error: vars.errorInfo.respuestaUsuario default "El proceso se ha tenido que cancelar por errores durante la ejecución"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="subflow-manejar-error-comun" doc:id="fcbdc9b4-3dcb-4e5b-adae-e0db81a52295" >
+		<set-variable value='#[vars.errorInfo.mensaje default "Error no controlado"]' doc:name="Set mensajeError desde errorInfo" doc:id="4955fdb9-2f5f-4fb5-9fe8-7057b00ac922" variableName="mensajeError" />
+		<set-variable value='#[vars.errorInfo.detalle default "Sin detalle"]' doc:name="Set detalleError desde errorInfo" doc:id="9b90e017-0e24-4493-b884-d06a9f068590" variableName="detalleError" />
+		<set-variable value='#[vars.errorInfo.codigo default "APP:UNKNOWN"]' doc:name="Set codigoError desde errorInfo" doc:id="83a5910c-6362-4db7-a95b-1f7fc48b948d" variableName="codigoError" />
+		<flow-ref doc:name="Registrar error" name="subflow-registrar-error-flujo" />
+		<flow-ref doc:name="Enviar mail de error" name="subflow-enviar-email-error" />
+	</sub-flow>
+	<sub-flow name="subflow-persistir-estado-hvac" doc:id="3f14e5d1-3b1e-418b-92d0-45c41971a697" >
+		<db:update doc:name="Persistir estado HVAC" doc:id="27c116e0-af5f-42a0-9957-45b3276277e3" config-ref="DB_MySQL_MTIS_Config">
+			<db:sql><![CDATA[UPDATE estadoOficina
+SET hvac_mode = :hvac_mode,
+    hvac_target = :hvac_target,
+    ciclos_estables = :ciclos_estables
+WHERE office_id = :office_id]]></db:sql>
+			<db:input-parameters><![CDATA[#[{
+  office_id: vars.estadoHvacActualizado.office_id,
+  hvac_mode: vars.estadoHvacActualizado.hvac_mode,
+  hvac_target: vars.estadoHvacActualizado.hvac_target,
+  ciclos_estables: vars.estadoHvacActualizado.ciclos_estables
+}]]]></db:input-parameters>
+		</db:update>
+	</sub-flow>
+	<sub-flow name="subflow-persistir-estado-light" doc:id="926af303-121a-4aa7-992d-b4e3602136fd" >
+		<db:update doc:name="Persistir estado LIGHT" doc:id="b737e70e-9e97-43ca-8e5b-e89d53920b80" config-ref="DB_MySQL_MTIS_Config">
+			<db:sql ><![CDATA[UPDATE estadoOficina
+SET light_mode = :light_mode,
+    light_target = :light_target,
+    ciclos_estables = :ciclos_estables
+WHERE office_id = :office_id]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+  office_id: vars.estadoLightActualizado.office_id,
+  light_mode: vars.estadoLightActualizado.light_mode,
+  light_target: vars.estadoLightActualizado.light_target,
+  ciclos_estables: vars.estadoLightActualizado.ciclos_estables
+}]]]></db:input-parameters>
+		</db:update>
+	</sub-flow>
+	<sub-flow name="subflow-registrar-accion-oficina" doc:id="21523656-87b2-48a8-a647-7ba7c10b0626" >
+		<db:insert doc:name="Registrar acción oficina" doc:id="46adaed0-7dee-4222-b166-6413e6ebb1a3" config-ref="DB_MySQL_MTIS_Config">
+			<db:sql><![CDATA[INSERT INTO accionesOficina
+(topic_origen, tipo_variable, accion_realizada, valor_anterior, valor_nuevo)
+VALUES
+(:topic_origen, :tipo_variable, :accion_realizada, :valor_anterior, :valor_nuevo)]]></db:sql>
+			<db:input-parameters><![CDATA[#[{
+  topic_origen: vars.accionOficina.topic_origen,
+  tipo_variable: vars.accionOficina.tipo_variable,
+  accion_realizada: vars.accionOficina.accion_realizada,
+  valor_anterior: vars.accionOficina.valor_anterior,
+  valor_nuevo: vars.accionOficina.valor_nuevo
+}]]]></db:input-parameters>
+		</db:insert>
+	</sub-flow>
+</mule>

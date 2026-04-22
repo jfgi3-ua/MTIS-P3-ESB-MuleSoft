@@ -1,5 +1,206 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+<mule xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:wsc="http://www.mulesoft.org/schema/mule/wsc"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd"></mule>
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/wsc http://www.mulesoft.org/schema/mule/wsc/current/mule-wsc.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd">
+	<flow name="apartado3-procesoNENVFlow"
+		doc:id="bb9fc848-0562-40d6-950b-0e30428d3732">
+		<http:listener doc:name="Listener"
+			doc:id="6ddd94c1-55e5-4133-8721-4c9a03b0482d"
+			config-ref="HTTP_Listener_9093_ProcesoNENV" path="/procesoNENV">
+			<http:response
+				statusCode="#[(vars.httpStatus default 200) as Number]" />
+			<http:error-response
+				statusCode="#[(vars.httpStatus default 500) as Number]" />
+		</http:listener>
+		<set-variable value="apartado3-procesoNENV"
+			doc:name="Set nombreFlujo"
+			doc:id="bb4e35e1-b66d-4b5a-a66e-24c6dedeed6a"
+			variableName="nombreFlujo" />
+		<set-variable value="notificarEmpleadosNoValidos"
+			doc:name="Set operacion"
+			doc:id="4a8dfaa0-7898-456d-9622-d9f8f5146b49"
+			variableName="operacion" />
+		<set-variable value='#[(0) as Number]'
+			doc:name="Set contador totalEmpleados"
+			doc:id="090a6386-5522-45dd-a10d-0b376abcbed5"
+			variableName="totalEmpleados" />
+		<set-variable value="#[(0) as Number]"
+			doc:name="Set contador totalNoValidos"
+			doc:id="9005bb2a-15e5-4d0e-a7a6-26ffacb8e888"
+			variableName="totalNoValidos" />
+		<set-variable value="#[(0) as Number]"
+			doc:name="Set contador totalNotificados"
+			doc:id="442c6ad0-2198-4ef0-ab13-b78144783d79"
+			variableName="totalNotificados" />
+		<try doc:name="Try" doc:id="25266a41-1229-42b3-8b3c-4061f5d164e6">
+			<try doc:name="Try SOAP"
+				doc:id="140a1676-5abd-41f8-a0b9-da66a30e0f99">
+				<wsc:consume operation="consultarTodosEmpleados"
+					doc:name="Consume: Consultar todos empleados SOAP"
+					doc:id="4195d661-d18e-48d5-a4a0-9fa768c0ea95"
+					config-ref="WSC_EmpleadosSOAP_Config">
+					<wsc:message>
+						<wsc:body><![CDATA[#[%dw 2.0
+output application/xml
+ns tns http://www.example.org/Empleados/
+---
+{
+  tns#consultarTodosEmpleados: {
+    WSKey: "SOAP-DEV-KEY-001"
+  }
+}]]]></wsc:body>
+					</wsc:message>
+				</wsc:consume>
+				<ee:transform doc:name="Convertir XML a JSON" doc:id="b22e7295-8171-41d6-b53c-6432aa05ec97">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+
+var empleados = payload.body.consultarTodosEmpleadosResponse.out.*empleados default []
+var errorSoap = payload.body.consultarTodosEmpleadosResponse.error default null
+---
+{
+  data: empleados map (emp) -> {
+    nifnie: emp.nifnie as String,
+    nombreApellidos: emp.nombreApellidos as String,
+    email: emp.email as String,
+    naf: emp.naf as String,
+    iban: emp.iban as String,
+    idNivel: emp.idNivel as Number,
+    usuario: emp.usuario as String,
+    password: emp.password as String,
+    valido: (emp.valido as String) == "true"
+  },
+  error: if (errorSoap == null or errorSoap == "") null else errorSoap as String
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+				<choice doc:name="¿SOAP correcto?" doc:id="5c5fbbd7-a3fd-4aa7-99fb-b57e8b3a8721">
+				<when expression="#[(payload.error default null) != null and (payload.error default '') != '']">
+					<raise-error doc:name="Raise error" doc:id="45313f4a-4547-4562-9333-67cb665e5b7b" type="APP:SOAP_CONSULTAR_TODOS_EMPLEADOS" description="#[(payload.error default 'Error al consultar todos los empleados') as String]" />
+				</when>
+			</choice>
+				<error-handler >
+					<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="7b8e0fb6-dc3b-4d90-b3b5-cb55fa2226c0" type="APP:SOAP_CONSULTAR_TODOS_EMPLEADOS">
+						<set-variable value='#[{&#10;  mensaje: "Error funcional al consultar todos los empleados por SOAP",&#10;  detalle: "El servicio SOAP devolvió un error funcional en la operación consultarTodosEmpleados. Detalle devuelto por el servicio: " ++ (error.description default "Sin detalle"),&#10;  codigo: "APP:SOAP_CONSULTAR_TODOS_EMPLEADOS",&#10;  httpStatus: 500,&#10;  respuestaUsuario: "El proceso se ha tenido que cancelar por errores durante la ejecución"&#10;}]' doc:name="Set error funcional SOAP" doc:id="4bedf581-6d2e-4b09-9b73-9c8ee74c3e48" variableName="errorInfo" />
+					</on-error-propagate>
+					<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="95632071-7f34-4de0-9c11-d5dd20bb8223" type="ANY">
+						<set-variable value='#[{&#10;  mensaje: "Error técnico al consultar el servicio SOAP de empleados",&#10;  detalle: "No se ha podido contactar con el servicio SOAP de empleados. Comprueba que Tomcat/Axis2 y el servicio Empleados estén levantados. Detalle técnico: " ++ (error.description default "Sin detalle"),&#10;  codigo: "APP:SOAP_SERVICIO_NO_DISPONIBLE",&#10;  httpStatus: 500,&#10;  respuestaUsuario: "El proceso se ha tenido que cancelar por errores durante la ejecución"&#10;}]' doc:name="Set error técnico SOAP" doc:id="18e9734e-f303-4641-bc61-220d45a3c0ea" variableName="errorInfo"/>
+					</on-error-propagate>
+				</error-handler>
+			</try>
+			<set-variable value="#[sizeOf(payload.data default [])]"
+				doc:name="Set totalEmpleados actual"
+				doc:id="d34100c2-bb68-4f56-a6de-dc52167e97e6"
+				variableName="totalEmpleados" />
+			<foreach doc:name="For Each"
+				doc:id="b6f12a90-145f-4327-acc4-69331417f84c"
+				collection="#[payload.data default []]">
+				<choice doc:name="Choice"
+					doc:id="1188a1a5-b446-4730-b49c-b910b57f9e91">
+					<when expression="#[(payload.valido default true) == false]">
+						<set-variable value="#[(vars.totalNoValidos default 0) + 1]" doc:name="Incrementar totalNoValidos" doc:id="9a0ff27b-3f9b-42c4-aa43-68c1aeafb3f4" variableName="totalNoValidos" />
+						<set-variable value='#[(payload.nifnie default "") as String]' doc:name="Set nifEmpleadoActual" doc:id="d2108df0-b67a-4e58-8b18-ef9b51b16a6a" variableName="nifEmpleadoActual" />
+						<set-variable value='#[(payload.email default "") as String]' doc:name="Set emailEmpleadoActual" doc:id="869b4e9c-7ee8-4880-b33f-5ea9847009f8" variableName="emailEmpleadoActual" />
+						<try doc:name="Try REST" doc:id="08e8831a-d671-446c-a331-4c132441a270" >
+							<ee:transform doc:name="Construir JSON body REST" doc:id="b50dccaa-abed-43b8-bc92-e997a511302b">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  nif: payload.nifnie,
+  email: payload.email
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+							<set-variable value='#[write(payload, "application/json")]' doc:name="Set bodyRestEnviado" doc:id="791072e1-c1ae-480b-b16d-0746922e8ee5" variableName="bodyRestEnviado" />
+							<logger level="INFO" doc:name="Logger body REST" doc:id="561bec0f-f454-4a9b-bbf8-8fc6f9f4ef12" message='#[vars.bodyRestEnviado]' />
+							<http:request method="POST" doc:name="Request: Notificar usuarios no válidos REST" doc:id="bf275e88-f013-45b8-b668-b6ff116dfdc6" config-ref="HTTP_Request_REST_Config" path="/notificaciones/usuario-no-valido">
+							<http:headers><![CDATA[#[output application/java
+---
+{
+	"WSKey" : "REST-DEV-KEY-001",
+    "Content-Type": "application/json",
+    "Accept": "application/json"
+}]]]></http:headers>
+						</http:request>
+							<set-variable value="#[(vars.totalNotificados default 0) + 1]" doc:name="Incrementar totalNotificados" doc:id="9759525c-b42b-4a6f-80a0-4b661cdf298c" variableName="totalNotificados" />
+							<error-handler >
+								<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="e83b9cf6-8ee9-4ba4-80ba-f0db17c20e15" type="HTTP:CONNECTIVITY">
+									<set-variable value='#[{&#10;  mensaje: "Error al notificar empleado no válido mediante servicio REST",&#10;  detalle: "No se ha podido contactar con el servicio REST de notificaciones al intentar notificar al empleado con NIF " ++ (vars.nifEmpleadoActual default "desconocido") ++ " (" ++ (vars.emailEmpleadoActual default "sin-email") ++ "). Comprueba que el servidor REST esté levantado en http://127.0.0.1:8081/api/v1. Detalle técnico: " ++ (error.description default "Sin detalle"),&#10;  codigo: "APP:REST_NOTIFICACIONES_NO_DISPONIBLE",&#10;  httpStatus: 500,&#10;  respuestaUsuario: "El proceso se ha tenido que cancelar por errores durante la ejecución"&#10;}]' doc:name="Set errorInfo" doc:id="67e828e0-0e6d-45ae-a656-612977825910" variableName="errorInfo"/>
+								</on-error-propagate>
+								<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="a55074e4-187b-44af-82cc-7a450f62bd34" type="HTTP:TIMEOUT">
+									<set-variable value='#[{&#10;  mensaje: "Tiempo de espera agotado al invocar el servicio REST de notificaciones",&#10;  detalle: "El servicio REST de notificaciones no respondió a tiempo al intentar notificar al empleado con NIF " ++ (vars.nifEmpleadoActual default "desconocido") ++ ". Detalle técnico: " ++ (error.description default "Sin detalle"),&#10;  codigo: "APP:REST_NOTIFICACIONES_TIMEOUT",&#10;  httpStatus: 500,&#10;  respuestaUsuario: "El proceso se ha tenido que cancelar por errores durante la ejecución"&#10;}]' doc:name="Set errorInfo" doc:id="e223f2d5-ac94-42e8-acad-ecb9984852da" variableName="errorInfo"/>
+								</on-error-propagate>
+								<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="07841e1f-0fe2-4330-b3cc-7b0ce98e0a67" type="HTTP:BAD_REQUEST">
+									<set-variable value='#[{&#10;  mensaje: "El servicio REST de notificaciones rechazó la petición",&#10;  detalle: "El servicio REST devolvió un 400 Bad Request al intentar notificar al empleado con NIF " ++ (vars.nifEmpleadoActual default "desconocido") ++ ". Revisa el body enviado y el contrato del endpoint. Body enviado: " ++ (vars.bodyRestEnviado default "sin-body") ++ ". Detalle técnico: " ++ (error.description default "Sin detalle"),&#10;  codigo: "APP:REST_NOTIFICACIONES_BAD_REQUEST",&#10;  httpStatus: 500,&#10;  respuestaUsuario: "El proceso se ha tenido que cancelar por errores durante la ejecución"&#10;}]' doc:name="Set errorInfo" doc:id="d2b93595-d15b-4cb5-983e-25abcafd2302" variableName="errorInfo"/>
+								</on-error-propagate>
+								<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="82c8bd41-c41f-4cdc-8610-bb84d6a6dbfd" type="HTTP:INTERNAL_SERVER_ERROR">
+									<set-variable value='#[{&#10;  mensaje: "Error interno del servicio REST de notificaciones",&#10;  detalle: "El servicio REST de notificaciones respondió con error interno al intentar procesar la notificación del empleado con NIF " ++ (vars.nifEmpleadoActual default "desconocido") ++ ". Posible problema interno del servidor REST o del servidor de correo/fakeSMTP. Detalle técnico: " ++ (error.description default "Sin detalle"),&#10;  codigo: "APP:REST_NOTIFICACIONES_ERROR_INTERNO",&#10;  httpStatus: 500,&#10;  respuestaUsuario: "El proceso se ha tenido que cancelar por errores durante la ejecución"&#10;}]' doc:name="Set errorInfo" doc:id="6ea58dc6-3c03-46f4-bef3-e1595dc9e1f6" variableName="errorInfo"/>
+								</on-error-propagate>
+								<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="bd02f693-207e-4644-9b76-5949a0ce9db9" type="ANY">
+									<set-variable value='#[{&#10;  mensaje: "Error no previsto al invocar el servicio REST de notificaciones",&#10;  detalle: "Se produjo un error no previsto al intentar notificar al empleado con NIF " ++ (vars.nifEmpleadoActual default "desconocido") ++ ". Detalle técnico: " ++ (error.description default "Sin detalle"),&#10;  codigo: "APP:REST_NOTIFICACIONES_ERROR_GENERICO",&#10;  httpStatus: 500,&#10;  respuestaUsuario: "El proceso se ha tenido que cancelar por errores durante la ejecución"&#10;}]' doc:name="Set errorInfo" doc:id="89a13c74-848f-4e91-b281-b22b5af00217" variableName="errorInfo"/>
+								</on-error-propagate>
+							</error-handler>
+						</try>
+					</when>
+				</choice>
+			</foreach>
+			<try doc:name="Try Auditoria BD" doc:id="f3280fc4-1bc4-4fb5-a598-280f12b68337" >
+				<db:insert doc:name="Insert en tabla ejercicio3" doc:id="5b1db680-48e3-423a-9449-e3a99bc14317" config-ref="DB_MySQL_MTIS_Config">
+				<db:sql><![CDATA[INSERT INTO ejercicio3 (ejecutado_correctamente, fecha_hora)
+VALUES (1, NOW())]]></db:sql>
+			</db:insert>
+				<error-handler >
+					<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="fb27a3fa-e687-412b-9f17-9f8583e31e1c" type="DB:CONNECTIVITY">
+						<set-variable value='#[{&#10;  mensaje: "No se ha podido registrar la ejecución satisfactoria en la base de datos",&#10;  detalle: "El proceso principal terminó correctamente, pero no se pudo insertar la auditoría en la tabla ejercicio3. Comprueba la conectividad con MySQL. Detalle técnico: " ++ (error.description default "Sin detalle"),&#10;  codigo: "APP:BD_EJERCICIO3_NO_DISPONIBLE",&#10;  httpStatus: 500,&#10;  respuestaUsuario: "El proceso se ha tenido que cancelar por errores durante la ejecución"&#10;}]' doc:name="Set errorInfo" doc:id="df0e0b24-e732-472e-a42b-f9022967b375" variableName="errorInfo"/>
+					</on-error-propagate>
+					<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="829915ac-d878-42b9-80ac-6d44d0b33770" type="ANY">
+						<set-variable value='#[{&#10;  mensaje: "Error al registrar la ejecución satisfactoria en la base de datos",&#10;  detalle: "Se produjo un error al insertar la auditoría de éxito en la tabla ejercicio3. Detalle técnico: " ++ (error.description default "Sin detalle"),&#10;  codigo: "APP:BD_EJERCICIO3_ERROR",&#10;  httpStatus: 500,&#10;  respuestaUsuario: "El proceso se ha tenido que cancelar por errores durante la ejecución"&#10;}]' doc:name="Set errorInfo" doc:id="2a6b88dc-6afc-4e5f-a2b7-43e80cdfc5c9" variableName="errorInfo"/>
+					</on-error-propagate>
+				</error-handler>
+			</try>
+			<ee:transform doc:name="Transform Message"
+				doc:id="fdf4f111-b93e-41f4-8071-46d9de06a123">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  mensaje: "el proceso ha finalizado satisfactoriamente",
+  resumen: {
+    totalEmpleados: vars.totalEmpleados,
+    empleadosNoValidos: vars.totalNoValidos,
+    notificacionesEnviadas: vars.totalNotificados
+    }
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+		</try>
+		<error-handler>
+			<on-error-continue enableNotifications="true"
+				logException="true" doc:name="On Error Continue"
+				doc:id="2a75b533-1912-46b9-8154-3c6d9dd4fd3a" type="ANY">
+				<set-variable
+					value='#[vars.errorInfo default {&#10;  mensaje: "El proceso se ha tenido que cancelar por errores durante la ejecución",&#10;  detalle: (error.description default ((error.errorType.namespace default "APP") ++ ":" ++ (error.errorType.identifier default "UNKNOWN"))) as String,&#10;  codigo: ((error.errorType.namespace default "APP") ++ ":" ++ (error.errorType.identifier default "UNKNOWN")),&#10;  httpStatus: 500,&#10;  respuestaUsuario: "El proceso se ha tenido que cancelar por errores durante la ejecución"&#10;}]'
+					doc:name="Set errorInfo"
+					doc:id="40aa0b4b-e869-4b16-91c8-4352fa5b7cd0"
+					variableName="errorInfo" />
+				<flow-ref doc:name="Manejo de errores"
+					doc:id="c7fafbac-aa7f-452a-b75f-3e597735f0da"
+					name="subflow-manejar-error-rest" />
+			</on-error-continue>
+		</error-handler>
+	</flow>
+</mule>

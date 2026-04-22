@@ -1,0 +1,4 @@
+%dw 2.0
+
+type auto_926af303_121a_4aa7_992d_b4e3602136fd_Input_Variables_estadoRows = Array<{|  office_id: Number,   temperatura_actual: Number,   iluminacion_actual: Number,   hvac_mode: String,   hvac_target?: Number,   light_mode: String,   light_target?: Number|}>
+

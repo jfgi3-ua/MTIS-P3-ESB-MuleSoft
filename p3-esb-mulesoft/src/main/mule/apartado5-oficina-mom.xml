@@ -1,5 +1,382 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+<mule xmlns:jms="http://www.mulesoft.org/schema/mule/jms"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd"></mule>
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/jms http://www.mulesoft.org/schema/mule/jms/current/mule-jms.xsd">
+	<flow name="apartado5-office3-publisher"
+		doc:id="928c9129-2524-45cd-84d8-a0ce3219d30e">
+		<scheduler doc:name="Scheduler"
+			doc:id="befd9ba7-25f8-4585-be5d-4034fc37f282">
+			<scheduling-strategy>
+				<fixed-frequency frequency="2000" />
+			</scheduling-strategy>
+		</scheduler>
+		<set-variable value="apartado5-office3-publisher"
+			doc:name="Set nombreFlujo"
+			doc:id="e408be10-389b-47fb-96ce-e0be18428458"
+			variableName="nombreFlujo" />
+		<set-variable value="PUBLICAR_TELEMETRIA_OFFICE3"
+			doc:name="Set operacion"
+			doc:id="d846b759-a132-42cc-a83c-0e06c4840dc9"
+			variableName="operacion" />
+		<set-variable value="#[(3) as Number]"
+			doc:name="Set officeId" doc:id="5308db20-a409-4eee-823f-5faa373e5fac"
+			variableName="officeId" />
+		<db:select doc:name="Select datos estadoOficina"
+			doc:id="4b6ee400-62c1-4dd2-8fdd-ae1094e4b8bd"
+			config-ref="DB_MySQL_MTIS_Config" target="estadoRows">
+			<db:sql><![CDATA[SELECT office_id,
+       temperatura_actual,
+       iluminacion_actual,
+       hvac_mode,
+       hvac_target,
+       light_mode,
+       light_target,
+       ciclos_estables,
+       indice_perturbacion
+FROM estadoOficina
+WHERE office_id = :office_id]]></db:sql>
+			<db:input-parameters><![CDATA[#[{
+  office_id: vars.officeId
+}]]]></db:input-parameters>
+		</db:select>
+		<choice doc:name="¿Fila existe?"
+			doc:id="f9e77198-d9d6-4231-aec8-a6821dc99b18">
+			<when expression="#[isEmpty(vars.estadoRows)]">
+				<raise-error doc:name="APP:ESTADO_OFICINA_NO_ENCONTRADO"
+					doc:id="48624157-0283-45d9-a4a8-958e4ec99d39"
+					type="APP:ESTADO_OFICINA_NO_ENCONTRADO"
+					description='#["No existe estadoOficina para office_id=" ++ (vars.officeId as String)]' />
+			</when>
+		</choice>
+		<choice doc:name="Consistencia"
+			doc:id="000e8fac-4f1d-4578-85c8-e70e7904216a">
+			<when
+				expression='#[(&#10;  (((vars.estadoRows[0].hvac_mode default "IDLE") as String) == "COOLING"&#10;   or ((vars.estadoRows[0].hvac_mode default "IDLE") as String) == "HEATING")&#10;  and vars.estadoRows[0].hvac_target == null&#10;)&#10;or&#10;(&#10;  (((vars.estadoRows[0].light_mode default "IDLE") as String) == "DIMMING"&#10;   or ((vars.estadoRows[0].light_mode default "IDLE") as String) == "BRIGHTENING")&#10;  and vars.estadoRows[0].light_target == null&#10;)]'>
+				<raise-error doc:name="APP:ESTADO_OFICINA_INCONSISTENTE"
+					doc:id="9722b0bd-48b5-4c45-840d-712c9b22475f"
+					type="APP:ESTADO_OFICINA_INCONSISTENTE"
+					description='#"Estado inconsistente en estadoOficina: existe modo activo sin target asociado"' />
+			</when>
+		</choice>
+		<ee:transform doc:name="Calcular estadoCalculado"
+			doc:id="1f19aa7e-9fe0-49ae-8dd0-412d5fd58a01">
+			<ee:variables>
+				<ee:set-variable variableName="estadoCalculado"><![CDATA[%dw 2.0
+output application/java
+var e = vars.estadoRows[0]
+
+var temp0 = e.temperatura_actual as Number
+var light0 = e.iluminacion_actual as Number
+var hvacMode = (e.hvac_mode default "IDLE") as String
+var lightMode = (e.light_mode default "IDLE") as String
+var hvacTarget = e.hvac_target
+var lightTarget = e.light_target
+var ciclos0 = (e.ciclos_estables default 0) as Number
+var indice0 = (e.indice_perturbacion default 0) as Number
+
+// 1) Evolución normal si hay modos activos
+var tempBase =
+  if (hvacMode == "COOLING" and hvacTarget != null)
+    if (temp0 - 0.5 < (hvacTarget as Number))
+      hvacTarget as Number
+    else
+      temp0 - 0.5
+  else if (hvacMode == "HEATING" and hvacTarget != null)
+    if (temp0 + 0.5 > (hvacTarget as Number))
+      hvacTarget as Number
+    else
+      temp0 + 0.5
+  else
+    temp0
+
+var lightBase =
+  if (lightMode == "DIMMING" and lightTarget != null)
+    if (light0 - 50 < (lightTarget as Number))
+      lightTarget as Number
+    else
+      light0 - 50
+  else if (lightMode == "BRIGHTENING" and lightTarget != null)
+    if (light0 + 50 > (lightTarget as Number))
+      lightTarget as Number
+    else
+      light0 + 50
+  else
+    light0
+
+// 2) Oficina completamente estable
+var ambosIdle = (hvacMode == "IDLE") and (lightMode == "IDLE")
+var enConfort =
+  (tempBase >= 23 and tempBase <= 25) and
+  (lightBase >= 450 and lightBase <= 650)
+
+// 3) Contador de estabilidad
+var ciclos1 =
+  if (ambosIdle and enConfort)
+    ciclos0 + 1
+  else
+    0
+
+// 4) Disparo de perturbación tras 2 ciclos estables
+var dispararPerturbacion =
+  ambosIdle and enConfort and ciclos1 >= 2
+
+// 5) Selector persistido
+var selector = indice0 mod 8
+
+// 6) Aplicar perturbación controlada
+var tempFinal =
+  if (!dispararPerturbacion)
+    tempBase
+  else if (selector == 0 or selector == 4 or selector == 5)
+    27.0
+  else if (selector == 1 or selector == 6 or selector == 7)
+    21.0
+  else
+    tempBase
+
+var lightFinal =
+  if (!dispararPerturbacion)
+    lightBase
+  else if (selector == 2 or selector == 4 or selector == 6)
+    800.0
+  else if (selector == 3 or selector == 5 or selector == 7)
+    350.0
+  else
+    lightBase
+
+var ciclosFinal =
+  if (dispararPerturbacion)
+    0
+  else
+    ciclos1
+
+var indiceFinal =
+  if (dispararPerturbacion)
+    indice0 + 1
+  else
+    indice0
+
+---
+{
+  office_id: e.office_id as Number,
+  temperatura_actual: tempFinal,
+  iluminacion_actual: lightFinal,
+  hvac_mode: hvacMode,
+  hvac_target: hvacTarget,
+  light_mode: lightMode,
+  light_target: lightTarget,
+  ciclos_estables: ciclosFinal,
+  indice_perturbacion: indiceFinal
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<db:update doc:name="Actualizar estadoOficina"
+			doc:id="e8905bc3-d87a-4ef5-979e-1887fb76914c"
+			config-ref="DB_MySQL_MTIS_Config">
+			<db:sql><![CDATA[UPDATE estadoOficina
+SET temperatura_actual = :temperatura_actual,
+    iluminacion_actual = :iluminacion_actual,
+    hvac_mode = :hvac_mode,
+    hvac_target = :hvac_target,
+    light_mode = :light_mode,
+    light_target = :light_target,
+    ciclos_estables = :ciclos_estables,
+    indice_perturbacion = :indice_perturbacion
+WHERE office_id = :office_id]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+  office_id: vars.estadoCalculado.office_id,
+  temperatura_actual: vars.estadoCalculado.temperatura_actual,
+  iluminacion_actual: vars.estadoCalculado.iluminacion_actual,
+  hvac_mode: vars.estadoCalculado.hvac_mode,
+  hvac_target: vars.estadoCalculado.hvac_target,
+  light_mode: vars.estadoCalculado.light_mode,
+  light_target: vars.estadoCalculado.light_target,
+  ciclos_estables: vars.estadoCalculado.ciclos_estables,
+  indice_perturbacion: vars.estadoCalculado.indice_perturbacion
+}]]]></db:input-parameters>
+		</db:update>
+		<ee:transform doc:name="Construir evento TEMP" doc:id="15af85bc-d5d5-4bda-a4f4-b47826b454ee" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var e = vars.estadoCalculado
+---
+{
+  officeId: e.office_id as Number,
+  sensor: "TEMP",
+  value: e.temperatura_actual as Number,
+  unit: "C",
+  ts: now() as String {format: "yyyy-MM-dd'T'HH:mm:ssXXX"}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<jms:publish doc:name="Publicar temperatura" doc:id="62a34d4b-8ed8-4141-a68c-285bd9fb8bb2" config-ref="JMS_ActiveMQ_Config" destination="building.office3.temperature" destinationType="TOPIC"/>
+		<ee:transform doc:name="Construir evento LIGHT" doc:id="ca2b46e0-d468-4bd6-b79a-84b218703131" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var e = vars.estadoCalculado
+---
+{
+  officeId: e.office_id as Number,
+  sensor: "LIGHT",
+  value: e.iluminacion_actual as Number,
+  unit: "LUX",
+  ts: now() as String {format: "yyyy-MM-dd'T'HH:mm:ssXXX"}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<jms:publish doc:name="Publicar iluminación" doc:id="25e9ddac-59f0-4491-8847-6554b7857296" config-ref="JMS_ActiveMQ_Config" destination="building.office3.light" destinationType="TOPIC"/>
+		<logger level="INFO" doc:name="Logger" doc:id="73703b4d-9c24-40e5-97c0-b6f26d9b671a" message='#["[apartado5-office3-publisher] Publicados sensores office3 -&gt; TEMP="&#10; ++ ((vars.estadoCalculado.temperatura_actual) as String)&#10; ++ " C | LIGHT="&#10; ++ ((vars.estadoCalculado.iluminacion_actual) as String)&#10; ++ " LUX"]'/>
+		<error-handler >
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="6f74815c-590d-4e92-b718-d43752f8d8b1" type="ANY">
+				<set-variable value='#[error.description default "Error publicando telemetría de office3"]' doc:name="Set mensajeError" doc:id="e5a0d2fa-5392-47ae-97df-43317ec32c39" variableName="mensajeError"/>
+				<set-variable value='#[error.detailedDescription default (error.description default "Sin detalle")]' doc:name="Set detalleError" doc:id="47b0745b-cdd8-4213-8563-9e7e1889014a" variableName="detalleError"/>
+				<flow-ref doc:name="Registro de errores" doc:id="d5532d71-f4a3-439e-b8d2-6fbfa4dd596c" name="subflow-registrar-error-flujo"/>
+				<logger level="WARN" doc:name="Logger" doc:id="33005c45-f036-4084-aa71-b1d340e7fb6f" message='#["[apartado5-office3-publisher] Error controlado: "&#10; ++ (vars.mensajeError default "Sin mensaje")]'/>
+			</on-error-continue>
+		</error-handler>
+	</flow>
+	<flow name="apartado5-office3-hvac-listener" doc:id="e06895f9-eff2-481d-a6a9-a1765da0307a" >
+		<jms:listener doc:name="Escuchar HVAC command" doc:id="8993cc54-e9c9-4eb0-86ff-9b8b8a736b3b" config-ref="JMS_ActiveMQ_Config" destination="building.office3.hvac.command" numberOfConsumers="1">
+			<jms:consumer-type >
+				<jms:topic-consumer />
+			</jms:consumer-type>
+			<jms:response sendCorrelationId="NEVER" />
+		</jms:listener>
+		<set-variable value='apartado5-office3-hvac-listener' doc:name="Set nombreFlujo" doc:id="0ba6c238-dd11-4ac1-8e16-2b203ed00631" variableName="nombreFlujo"/>
+		<set-variable value="PROCESAR_HVAC_COMMAND" doc:name="Set operacion" doc:id="8ee6439e-7075-4894-9fc3-85c0995ba0ab" variableName="operacion"/>
+		<set-variable value="building.office3.hvac.command" doc:name="Set topicOrigen" doc:id="a894802b-4000-4976-9d57-e96068d35176" variableName="topicOrigen"/>
+		<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;read(payload, "application/json")]' doc:name="Parsear comando HVAC" doc:id="4cd946ab-555e-4a84-a746-1badd9dc2400" variableName="comandoHvac"/>
+		<db:select doc:name="Obtener estado oficina" doc:id="50d6e4ee-4564-468e-92bd-42e70dee0e14" config-ref="DB_MySQL_MTIS_Config" target="estadoRows">
+			<db:sql ><![CDATA[SELECT office_id,
+       temperatura_actual,
+       iluminacion_actual,
+       hvac_mode,
+       hvac_target,
+       light_mode,
+       light_target,
+       ciclos_estables,
+       indice_perturbacion
+FROM estadoOficina
+WHERE office_id = 3]]></db:sql>
+		</db:select>
+		<choice doc:name="¿Fila existe?" doc:id="6c14d43e-647d-4b06-925d-d4930528d26c" >
+			<when expression="#[isEmpty(vars.estadoRows)]">
+				<raise-error doc:name="APP:ESTADO_OFICINA_NO_ENCONTRADO" doc:id="6f5ed7c9-238e-40f1-8904-33394f431228" type="APP:ESTADO_OFICINA_NO_ENCONTRADO" description='#"No existe estadoOficina para office_id=3 al procesar comando HVAC"'/>
+			</when>
+		</choice>
+		<choice doc:name="¿Qué acción HVAC?" doc:id="ef44da6b-c380-4093-9fa8-bcc1dc40c217">
+			<when expression='#[(vars.comandoHvac.action default "") == "COOL_ON"]' >
+				<set-variable value='#[%dw 2.0&#10;output application/java&#10;var e = vars.estadoRows[0]&#10;---&#10;{&#10;  office_id: e.office_id as Number,&#10;  hvac_mode: "COOLING",&#10;  hvac_target: (vars.comandoHvac.target default 24) as Number,&#10;  ciclos_estables: 0&#10;}]' doc:name="Actualizar estado HVAC: COOL_ON" doc:id="25f183df-45d3-43da-bf14-85ff540a81a9" variableName="estadoHvacActualizado"/>
+				<set-variable doc:name="Set accionOficina" doc:id="9f92201f-3ff0-4995-bb8d-5fd6e1991a34" variableName="accionOficina" value='#[%dw 2.0&#10;output application/java&#10;var e = vars.estadoRows[0]&#10;var nuevoTarget = (vars.comandoHvac.target default 24) as Number&#10;---&#10;{&#10;  topic_origen: vars.topicOrigen,&#10;  tipo_variable: "TEMPERATURA",&#10;  accion_realizada: "COOL_ON",&#10;  valor_anterior: e.temperatura_actual as Number,&#10;  valor_nuevo: nuevoTarget&#10;}]'/>
+				<flow-ref doc:name="Persistir estado HVAC" doc:id="84912bbf-00e5-4ae2-ae7d-6b90a8f5c0b5" name="subflow-persistir-estado-hvac"/>
+				<flow-ref doc:name="Registrar acción oficina" doc:id="c4b9d0f0-680c-49ad-bc4d-dbd8433d0c5e" name="subflow-registrar-accion-oficina"/>
+				<logger level="INFO" doc:name="Logger COOL_ON" doc:id="bb2e386d-7e4c-4e1f-a693-d496a5d63039" message='#["[apartado5-office3-hvac-listener] Aplicado COOL_ON con target="&#10; ++ ((vars.estadoHvacActualizado.hvac_target) as String)]' />
+			</when>
+			<when expression='#[(vars.comandoHvac.action default "") == "HEAT_ON"]'>
+				<set-variable doc:name="Actualizar estado HVAC: HEAT_ON" doc:id="f13659b0-164e-495f-a9a0-4d4b1c58c3b3" variableName="estadoHvacActualizado" value='#[%dw 2.0&#10;output application/java&#10;var e = vars.estadoRows[0]&#10;---&#10;{&#10;  office_id: e.office_id as Number,&#10;  hvac_mode: "HEATING",&#10;  hvac_target: (vars.comandoHvac.target default 24) as Number,&#10;  ciclos_estables: 0&#10;}]'/>
+				<set-variable value='#[%dw 2.0&#10;output application/java&#10;var e = vars.estadoRows[0]&#10;var nuevoTarget = (vars.comandoHvac.target default 24) as Number&#10;---&#10;{&#10;  topic_origen: vars.topicOrigen,&#10;  tipo_variable: "TEMPERATURA",&#10;  accion_realizada: "HEAT_ON",&#10;  valor_anterior: e.temperatura_actual as Number,&#10;  valor_nuevo: nuevoTarget&#10;}]' doc:name="Set accionOficina" doc:id="3897b8f4-a9d9-4a6b-98cc-05e7900b6d5f" variableName="accionOficina"/>
+				<flow-ref doc:name="Persistir estado HVAC" doc:id="7cf62f64-2235-45b5-9770-00a122b0b0a7" name="subflow-persistir-estado-hvac"/>
+				<flow-ref doc:name="Registrar acción oficina" doc:id="ef19b43a-25d5-4504-af3b-5b689cd27cb6" name="subflow-registrar-accion-oficina"/>
+				<logger level="INFO" doc:name="Logger HEAT_ON" doc:id="45c347ac-6617-4535-8558-5d4fa81d27bb" message='#["[apartado5-office3-hvac-listener] Aplicado HEAT_ON con target="&#10; ++ ((vars.estadoHvacActualizado.hvac_target) as String)]'/>
+			</when>
+			<when expression='#[(vars.comandoHvac.action default "") == "COOL_OFF"]'>
+				<set-variable value='#[%dw 2.0&#10;output application/java&#10;var e = vars.estadoRows[0]&#10;---&#10;{&#10;  office_id: e.office_id as Number,&#10;  hvac_mode: "IDLE",&#10;  hvac_target: null,&#10;  ciclos_estables: 0&#10;}]' doc:name="Actualizar estado HVAC: COOL_OFF" doc:id="06a30e7f-22a1-4da7-ab68-d1bf591d2ebe" variableName="estadoHvacActualizado"/>
+				<set-variable value='#[%dw 2.0&#10;output application/java&#10;var e = vars.estadoRows[0]&#10;---&#10;{&#10;  topic_origen: vars.topicOrigen,&#10;  tipo_variable: "TEMPERATURA",&#10;  accion_realizada: "COOL_OFF",&#10;  valor_anterior: e.temperatura_actual as Number,&#10;  valor_nuevo: e.temperatura_actual as Number&#10;}]' doc:name="Set accionOficina" doc:id="01cbe8ab-6d44-4877-8542-03257a203ff4" variableName="accionOficina"/>
+				<flow-ref doc:name="Persistir estado HVAC" doc:id="93840e51-f7a6-4a7e-948f-85cc5ed001c7" name="subflow-persistir-estado-hvac"/>
+				<flow-ref doc:name="Registrar acción oficina" doc:id="7e78b1dc-bd99-47bd-89f5-eda99253490a" name="subflow-registrar-accion-oficina"/>
+				<logger level="INFO" doc:name="Logger COOL OFF" doc:id="4d71d88e-4332-4440-91d1-78094e4e529a" message='#["[apartado5-office3-hvac-listener] Aplicado COOL_OFF"]'/>
+			</when>
+			<when expression='#[(vars.comandoHvac.action default "") == "HEAT_OFF"]'>
+				<set-variable value='#[%dw 2.0&#10;output application/java&#10;var e = vars.estadoRows[0]&#10;---&#10;{&#10;  office_id: e.office_id as Number,&#10;  hvac_mode: "IDLE",&#10;  hvac_target: null,&#10;  ciclos_estables: 0&#10;}]' doc:name="Actualizar estado HVAC: HEAT_OFF" doc:id="b4690f04-cb1c-4c71-b203-def95760a4f5" variableName="estadoHvacActualizado"/>
+				<set-variable value='#[%dw 2.0&#10;output application/java&#10;var e = vars.estadoRows[0]&#10;---&#10;{&#10;  topic_origen: vars.topicOrigen,&#10;  tipo_variable: "TEMPERATURA",&#10;  accion_realizada: "HEAT_OFF",&#10;  valor_anterior: e.temperatura_actual as Number,&#10;  valor_nuevo: e.temperatura_actual as Number&#10;}]' doc:name="Set accionOficina" doc:id="108ce798-5b25-41ed-b53b-6b71835892ab" variableName="accionOficina"/>
+				<flow-ref doc:name="Persistir estado HVAC" doc:id="d3f511e4-5511-41d2-bf6c-2f31ff431888" name="subflow-persistir-estado-hvac"/>
+				<flow-ref doc:name="Registrar acción oficina" doc:id="84ed726a-aa18-4e36-9d32-d130bf021aae" name="subflow-registrar-accion-oficina"/>
+				<logger level="INFO" doc:name="Logger HEAT OFF" doc:id="5920d0da-19a9-44b7-9601-98bc9ae9a0b8" message='#["[apartado5-office3-hvac-listener] Aplicado HEAT_OFF"]'/>
+			</when>
+			<otherwise >
+				<raise-error doc:name="APP:ACCION_HVAC_NO_SOPORTADA" doc:id="42abf17d-1f0d-44cc-ab32-c8c2f3f79ceb" type="APP:ACCION_HVAC_NO_SOPORTADA" description='#["Acción HVAC no soportada: " ++ ((vars.comandoHvac.action default "null") as String)]'/>
+			</otherwise>
+		</choice>
+		<error-handler >
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="7bc37dbd-0b49-449c-b123-f32e51557cbd" type="ANY">
+				<set-variable value='#[error.description default "Error procesando comando HVAC"]' doc:name="Set mensajeError" doc:id="6d778197-fbe4-4510-8cdd-6a42bf23057e" variableName="mensajeError"/>
+				<set-variable value='#[error.detailedDescription default (error.description default "Sin detalle")]' doc:name="Set detalleError" doc:id="cae82cb3-342d-4bfc-9d78-889e33f21e3e" variableName="detalleError"/>
+				<flow-ref doc:name="Registrar error flujo" doc:id="8bcb1ca7-9bac-4943-9226-20ebd77291f4" name="subflow-registrar-error-flujo"/>
+				<logger level="WARN" doc:name="Logger error controlado" doc:id="789b7aaf-17a7-4409-abf9-1a02e5959136" message='#["[apartado5-office3-hvac-listener] Error controlado: "&#10; ++ (vars.mensajeError default "Sin mensaje")]'/>
+			</on-error-continue>
+		</error-handler>
+	</flow>
+	<flow name="apartado5-office3-light-listener" doc:id="c23ce8d2-2322-4775-9bf8-3f4c6afa4a33" >
+		<jms:listener doc:name="Escuchar LIGHT command" doc:id="dbc19185-15d0-4854-a110-c5c646a8ebf9" config-ref="JMS_ActiveMQ_Config" destination="building.office3.light.command" numberOfConsumers="1">
+			<jms:consumer-type >
+				<jms:topic-consumer />
+			</jms:consumer-type>
+		</jms:listener>
+		<set-variable value="apartado5-office3-light-listener" doc:name="Set nombreFlujo" doc:id="0f0fa954-1ad3-4201-9bd3-cb5bbd01c09b" variableName="nombreFlujo"/>
+		<set-variable value="PROCESAR_LIGHT_COMMAND" doc:name="Set operacion" doc:id="c69dfd7a-aca3-4bdf-be72-809e60db0736" variableName="operacion"/>
+		<set-variable value="building.office3.light.command" doc:name="Set topicOrigen" doc:id="14600d0b-b15b-4ef9-8d8c-77e7a174b1c7" variableName="topicOrigen"/>
+		<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;read(payload, "application/json")]' doc:name="Parsear comando LIGHT" doc:id="7722ba58-c698-47cd-a486-d1d6bc3ce9de" variableName="comandoLight"/>
+		<db:select doc:name="Obtener estado oficina" doc:id="cfa0b173-782a-487d-bbce-37b67106a51e" config-ref="DB_MySQL_MTIS_Config" target="estadoRows">
+			<db:sql ><![CDATA[SELECT office_id,
+       temperatura_actual,
+       iluminacion_actual,
+       hvac_mode,
+       hvac_target,
+       light_mode,
+       light_target,
+       ciclos_estables,
+       indice_perturbacion
+FROM estadoOficina
+WHERE office_id = 3]]></db:sql>
+		</db:select>
+		<choice doc:name="¿Fila existe?" doc:id="c97b3340-75db-4234-8109-cf6139d7fb41" >
+			<when expression="#[isEmpty(vars.estadoRows)]">
+				<raise-error doc:name="APP:ESTADO_OFICINA_NO_ENCONTRADO" doc:id="364ea6d1-c01e-473c-9568-547721e4afee" type="APP:ESTADO_OFICINA_NO_ENCONTRADO" description="No existe estadoOficina para office_id=3 al procesar comando LIGHT"/>
+			</when>
+		</choice>
+		<choice doc:name="¿Qué acción LIGHT?" doc:id="0ab6b710-af6a-447c-9c6f-ef98248509a7" >
+			<when expression='#[(vars.comandoLight.action default "") == "DIM_TO"]'>
+				<set-variable value='#[%dw 2.0&#10;output application/java&#10;var e = vars.estadoRows[0]&#10;---&#10;{&#10;  office_id: e.office_id as Number,&#10;  light_mode: "DIMMING",&#10;  light_target: (vars.comandoLight.target default 550) as Number,&#10;  ciclos_estables: 0&#10;}]' doc:name="Actualizar estado LIGHT: DIM_TO" doc:id="55138644-3bf3-4d18-8a7b-81c7b9558974" variableName="estadoLightActualizado"/>
+				<set-variable value='#[%dw 2.0&#10;output application/java&#10;var e = vars.estadoRows[0]&#10;var nuevoTarget = (vars.comandoLight.target default 550) as Number&#10;---&#10;{&#10;  topic_origen: vars.topicOrigen,&#10;  tipo_variable: "ILUMINACION",&#10;  accion_realizada: "DIM_TO",&#10;  valor_anterior: e.iluminacion_actual as Number,&#10;  valor_nuevo: nuevoTarget&#10;}]' doc:name="Set accionOficina DIM_TO" doc:id="f85e493e-f64e-45ed-859b-147212907d9a" variableName="accionOficina"/>
+				<flow-ref doc:name="Persistir estado LIGHT" doc:id="523c729f-c30e-4458-89a7-0cb1c57d0962" name="subflow-persistir-estado-light"/>
+				<flow-ref doc:name="Registrar acción oficina" doc:id="fc29f82e-418d-4662-9ab6-10790a662712" name="subflow-registrar-accion-oficina"/>
+				<logger level="INFO" doc:name="Logger DIM_TO" doc:id="b39be246-a9d2-42d2-9c91-c4f727d5a54f" message='#["[apartado5-office3-light-listener] Aplicado DIM_TO con target="&#10; ++ ((vars.estadoLightActualizado.light_target) as String)]'/>
+			</when>
+			<when expression='#[(vars.comandoLight.action default "") == "BRIGHTEN_TO"]'>
+				<set-variable value='#[%dw 2.0&#10;output application/java&#10;var e = vars.estadoRows[0]&#10;---&#10;{&#10;  office_id: e.office_id as Number,&#10;  light_mode: "BRIGHTENING",&#10;  light_target: (vars.comandoLight.target default 550) as Number,&#10;  ciclos_estables: 0&#10;}]' doc:name="Actualizar estado LIGHT: BRIGHTEN_TO" doc:id="cb61714d-6fbb-4d62-947f-1d547f4cb9b4" variableName="estadoLightActualizado"/>
+				<set-variable value='#[%dw 2.0&#10;output application/java&#10;var e = vars.estadoRows[0]&#10;var nuevoTarget = (vars.comandoLight.target default 550) as Number&#10;---&#10;{&#10;  topic_origen: vars.topicOrigen,&#10;  tipo_variable: "ILUMINACION",&#10;  accion_realizada: "BRIGHTEN_TO",&#10;  valor_anterior: e.iluminacion_actual as Number,&#10;  valor_nuevo: nuevoTarget&#10;}]' doc:name="Set accionOficina " doc:id="1addfdc7-737a-4522-8afd-6b09d4ffd14c" variableName="accionOficina"/>
+				<flow-ref doc:name="Persistir estado LIGHT" doc:id="71091d34-b0e6-4d7d-a026-fc83d00e3a4f" name="subflow-persistir-estado-light"/>
+				<flow-ref doc:name="Registrar acción oficina" doc:id="f0e0d06a-da0c-48fa-896b-b778e0fa0119" name="subflow-registrar-accion-oficina"/>
+				<logger level="INFO" doc:name="Logger BRIGHTEN_TO" doc:id="f5a22e11-bbe0-43a1-92ff-2a7ae1f59dbf" message='#["[apartado5-office3-light-listener] Aplicado BRIGHTEN_TO con target="&#10; ++ ((vars.estadoLightActualizado.light_target) as String)]'/>
+			</when>
+			<when expression='#[(vars.comandoLight.action default "") == "LIGHT_OFF"]'>
+				<set-variable value='#[%dw 2.0&#10;output application/java&#10;var e = vars.estadoRows[0]&#10;---&#10;{&#10;  office_id: e.office_id as Number,&#10;  light_mode: "IDLE",&#10;  light_target: null,&#10;  ciclos_estables: 0&#10;}]' doc:name="Actualizar estado LIGHT: LIGHT_OFF" doc:id="0ef6834c-3b09-4bfd-a12e-14a33ce6c53b" variableName="estadoLightActualizado"/>
+				<set-variable value='#[%dw 2.0&#10;output application/java&#10;var e = vars.estadoRows[0]&#10;---&#10;{&#10;  topic_origen: vars.topicOrigen,&#10;  tipo_variable: "ILUMINACION",&#10;  accion_realizada: "LIGHT_OFF",&#10;  valor_anterior: e.iluminacion_actual as Number,&#10;  valor_nuevo: e.iluminacion_actual as Number&#10;}]' doc:name="Set accionOficina " doc:id="e7d3b85b-14bf-4d02-afd4-91796ef52402" variableName="accionOficina"/>
+				<flow-ref doc:name="Persistir estado LIGHT" doc:id="18a113fa-9d17-4077-afc0-90abb0bb23c0" name="subflow-persistir-estado-light"/>
+				<flow-ref doc:name="Registrar acción oficina" doc:id="4326cd48-6158-4e2c-8ca4-301fab33b3ea" name="subflow-registrar-accion-oficina"/>
+				<logger level="INFO" doc:name="Logger LIGHT_OFF" doc:id="d4178cbf-8897-46bc-a659-6cc01b3808dd" message='#["[apartado5-office3-light-listener] Aplicado LIGHT_OFF"]'/>
+			</when>
+			<otherwise >
+				<raise-error doc:name="APP:ACCION_LIGHT_NO_SOPORTADA" doc:id="5f5c6fc1-26de-442d-b332-61b8e74bfcf5" type="APP:ACCION_LIGHT_NO_SOPORTADA" description='#["Acción LIGHT no soportada: " ++ ((vars.comandoLight.action default "null") as String)]'/>
+			</otherwise>
+		</choice>
+		<error-handler >
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="80e54200-88e9-4982-9429-90bfb0ce6700" type="ANY">
+				<set-variable value='#[error.description default "Error procesando comando LIGHT"]' doc:name="Set mensajeError" doc:id="1508b9ca-370d-4a5a-b4cd-631e4d1732d1" variableName="mensajeError"/>
+				<set-variable value='#[error.detailedDescription default (error.description default "Sin detalle")]' doc:name="Set detalleError" doc:id="1e522874-1735-49e4-a64a-9d20c6d70c24" variableName="detalleError"/>
+				<flow-ref doc:name="Registrar error flujo" doc:id="df22145b-f086-4049-a980-98afe6473365" name="subflow-registrar-error-flujo"/>
+				<logger level="WARN" doc:name="Logger error controlado" doc:id="4341627e-bad4-4982-a096-c3b56cebf75d" message='#["[apartado5-office3-light-listener] Error controlado: "&#10; ++ (vars.mensajeError default "Sin mensaje")]'/>
+			</on-error-continue>
+		</error-handler>
+	</flow>
+</mule>

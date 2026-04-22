@@ -1,0 +1,4 @@
+%dw 2.0
+
+type auto_1e04b180_52ed_4d76_8fcd_2be73d1c4ff3_Input_Variables_wskeyRows = Array<{| total: Number |}>
+
